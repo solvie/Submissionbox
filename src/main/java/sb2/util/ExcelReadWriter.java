@@ -12,8 +12,10 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.commons.collections4.BidiMap;
+import sb2.exceptions.BadConfigXlsxException;
 import sb2.exceptions.ExcelOpenError;
 import sb2.exceptions.ExcelReadError;
+import sb2.modelobjects.SbAssignment;
 import sb2.modelobjects.SbUser;
 
 
@@ -22,19 +24,17 @@ import sb2.modelobjects.SbUser;
  * @author Solvie Lee
  * @version 1.0
  *
- * This is the version that corresponds to AutoRef1
  *
  */
 
 public class ExcelReadWriter {//debating whether this should be an implementation of an interface or not.
 
-    public List<SbUser> attemptReadClasslist(String pathname)throws ExcelOpenError, ExcelReadError {
+    public Sheet attemptGetSheet(String pathname, String sheetName)throws ExcelOpenError {
         File file = new File(pathname);
         try {
             FileInputStream inputStream = new FileInputStream(file);
             Workbook spreadsheet = new XSSFWorkbook(inputStream);
-            Sheet sheet = spreadsheet.getSheetAt(0);
-            return readClasslist(sheet);
+            return spreadsheet.getSheet(sheetName);
         } catch (FileNotFoundException e){
             throw new ExcelOpenError("FileNotFound", e.getCause());
         } catch (IOException e){
@@ -45,12 +45,43 @@ public class ExcelReadWriter {//debating whether this should be an implementatio
     }
 
 
-    /**
-     * Reads from an excel spreadsheet to a list of TestCaseRawDatas.
-     * @return
-     */
-    public List<SbUser> readClasslist(Sheet sheet) throws ExcelReadError{
-        //TODO: read test case number if there are any.
+    public List<SbAssignment> readAssignments(Sheet sheet) throws BadConfigXlsxException{
+        List<SbAssignment> assignmentList = new ArrayList<>();
+        DualHashBidiMap<String, Integer> dict = mapTopRow(sheet.getRow(0));
+        Iterator<Row> rowIterator = sheet.rowIterator();
+        rowIterator.next(); //Skip the first row
+        try {
+            while (rowIterator.hasNext()) {
+                Row nextRow = rowIterator.next();
+                SbAssignment asst = new SbAssignment(fromDict(dict, nextRow, "Assignment"),
+                        fromDict(dict, nextRow, "Language"), fromDict(dict, nextRow, "Test Format"));
+                assignmentList.add(asst);
+            }
+        } catch (NoSuchFieldError e){
+            throw new BadConfigXlsxException("NoSuchField: "+e.getMessage(), e.getCause());
+        }
+        return assignmentList;
+    }
+
+
+    public DualHashBidiMap<String, String> readAssignmentTests(Sheet sheet) throws BadConfigXlsxException{
+        DualHashBidiMap<String, String> tests = new DualHashBidiMap<>();
+        DualHashBidiMap<String, Integer> dict = mapTopRow(sheet.getRow(0));
+        Iterator<Row> rowIterator = sheet.rowIterator();
+        rowIterator.next(); //Skip the first row
+        try {
+            while (rowIterator.hasNext()) { //TODO: more error handling here
+                Row nextRow = rowIterator.next();
+                tests.put(fromDict(dict, nextRow, "Input"), fromDict(dict, nextRow, "Output"));
+            }
+        } catch (NoSuchFieldError e){
+            throw new BadConfigXlsxException("NoSuchField; tests sheet not configured properly "+e.getMessage(), e.getCause());
+        }
+        return tests;
+    }
+
+
+    public List<SbUser> readClasslist(Sheet sheet) throws BadConfigXlsxException{
         List<SbUser> classlist = new ArrayList<>();
         DualHashBidiMap<String, Integer> dict = mapTopRow(sheet.getRow(0));
         Iterator<Row> rowIterator = sheet.rowIterator();
@@ -62,7 +93,7 @@ public class ExcelReadWriter {//debating whether this should be an implementatio
                 classlist.add(student);
             }
         } catch (NoSuchFieldError e){
-            throw new ExcelReadError("NoSuchField: "+e.getMessage(), e.getCause());
+            throw new BadConfigXlsxException("NoSuchField: "+e.getMessage(), e.getCause());
         }
         return classlist;
     }

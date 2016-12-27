@@ -14,7 +14,6 @@ import org.springframework.boot.autoconfigure.security.SecurityAutoConfiguration
 public class Application {
 
     public static void main(String[] args){
-        System.out.println("\n\nIt starts");
         SpringApplication.run(Application.class, args);
     }
 
