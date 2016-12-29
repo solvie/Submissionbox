@@ -1,6 +1,7 @@
 package sb2;
 
 import org.apache.commons.collections4.bidimap.DualHashBidiMap;
+import org.apache.tomcat.jni.Time;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import sb2.exceptions.BadConfigXlsxException;
@@ -17,6 +18,8 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Created by solvie on 2016-11-20.
@@ -48,7 +51,6 @@ public class Model {
           |-> assignment-n  */
     public boolean initFileSystem() throws FileSystemException, ExcelOpenError, BadConfigXlsxException, InterruptedException {
         //TODO: If the submissions folder exists, throw an error if it doesn't look like what the assignments-config says it should look like
-
         //If the submission folder doesn't exist, create it from scratch with the assignments-config information.
         this.assignments = readAssignmentConfig();
 
@@ -195,6 +197,8 @@ public class Model {
             return true;
         } catch (IOException e) {
             throw new ShellException("IOException while compiling java");
+        } catch (TimeoutException e){
+            throw new ShellException(e.getMessage());
         }
     }
 
@@ -210,16 +214,27 @@ public class Model {
 
         } catch (IOException e) {
             throw new ShellException("IOException while compiling and running java");
+        } catch (TimeoutException e){
+            throw new ShellException(e.getMessage());
         }
     }
 
-    private String executeShellCommands(String[] commands) throws IOException {
+    private String executeShellCommands(String[] commands) throws IOException, TimeoutException {
         String output = "";
         ProcessBuilder pb = new ProcessBuilder("/bin/bash");
         Process p = pb.start();
         BufferedWriter p_stdin = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
-        for (int i = 0; i < commands.length; i++)
+        for (int i = 0; i < commands.length; i++) {
             putCommand(p_stdin, commands[i]);
+            try {
+                if (!p.waitFor(5, TimeUnit.SECONDS)) {
+                    p.destroyForcibly();
+                    throw new TimeoutException("Timed out, does your code prompt user for input?");
+                }
+            }catch (InterruptedException e){
+                throw new TimeoutException("Interrupted while checking timeout..."); //fixme
+            }
+        }
         putCommand(p_stdin, "exit");
         Scanner s = new Scanner(p.getInputStream());
         while (s.hasNext()) output = output + s.next();
