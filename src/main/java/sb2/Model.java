@@ -109,21 +109,15 @@ public class Model {
                     java.lang.Runtime.getRuntime().exec("mkdir -p "+submissionDir).waitFor();
                     System.out.println(submissionDir);
                     if (name.contains(".zip")) {
-                        String unzip = String.format("unzip %s/%s -d %s/", tempDir, name, tempDir);
-                        ProcessBuilder pb = new ProcessBuilder("/bin/bash");
-                        Process p = pb.start();
-                        BufferedWriter p_stdin = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
-                        putCommand(p_stdin, unzip);
-                        String moveJava = String.format(
+
+                        String[] unzip = {String.format("unzip %s/%s -d %s/", tempDir, name, tempDir)};
+                        executeShellCommands(unzip);
+
+                        String[] moveJava = {String.format(
                                 "for entry in $(find %s/. -name *.java); " +
                                         " do if [[ $entry != *_MACOSX* ]]; then mv $entry %s; fi; "+
-                                        " done;", tempDir, submissionDir);
-
-                        System.out.println(moveJava);
-                        putCommand(p_stdin, moveJava);
-                        putCommand(p_stdin, "exit");
-
-
+                                        " done;", tempDir, submissionDir)};
+                        executeShellCommands(moveJava);
                     }
                     else
                         java.lang.Runtime.getRuntime().exec("mv " + tempDir + "/" + name + " " + submissionDir).waitFor();
@@ -164,17 +158,22 @@ public class Model {
         DualHashBidiMap<String, String> tests = SbAssignment.findAsst(this.assignments, asstnum).getOutputTests();
         //for each test, run them and see the expected value
         List<String> results= new ArrayList<>();
-        tests.forEach(
-                (k, v) -> {
-                    String ans;
-                    try {
-                        ans = testJavaOutput(asstnum, username, mainclassname, k, v);
-                    } catch (ShellException e) { //TODO: this shouldn't be an excelopenerror.
-                        ans = "ERROR."+e.getMessage();
-                    }
-                    results.add(ans);
-                    }
-        );
+        try {
+            if (testJavaCompile(asstnum, username, mainclassname)) //if it compiles, run the tests.
+                tests.forEach(
+                        (k, v) -> {
+                            String ans;
+                            try {
+                                ans = testJavaOutput(asstnum, username, mainclassname, k, v);
+                            } catch (ShellException e) { //TODO: this shouldn't be an excelopenerror.
+                                ans = "ERROR." + e.getMessage();
+                            }
+                            results.add(ans);
+                        }
+                );
+        } catch (ShellException e){
+            results.add( "ERROR WHILE COMPILING" + e.getMessage());
+        }
         return new Message(Message.Mtype.SUCCESS, results.toString());
     }
 
@@ -186,12 +185,24 @@ public class Model {
         System.out.println("Unit testing with Java");
     }
 
+    private boolean testJavaCompile(int asstnum, String username, String mainclassname) throws ShellException{
+        try {
+            String[] commands =
+                    { String.format("cd ./submissions/Assignment-%s/%s", asstnum, username),
+                            String.format("javac %s.java", mainclassname),
+                    };
+            executeShellCommands(commands);//TODO: needs to return false if doesn't compile
+            return true;
+        } catch (IOException e) {
+            throw new ShellException("IOException while compiling java");
+        }
+    }
+
     //TODO this should throw (more specific) errors if timeout, and other such stuff.
     private String testJavaOutput(int asstnum, String username, String mainclassname, String input, String output) throws ShellException{
         try {
             String[] commands =
                     { String.format("cd ./submissions/Assignment-%s/%s", asstnum, username),
-                            String.format("javac %s.java", mainclassname),
                             String.format("java %s %s", mainclassname, input),
                     };
             String actualOutput = executeShellCommands(commands);
