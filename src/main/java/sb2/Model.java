@@ -189,18 +189,12 @@ public class Model {
     //TODO this should throw (more specific) errors if timeout, and other such stuff.
     private String testJavaOutput(int asstnum, String username, String mainclassname, String input, String output) throws ShellException{
         try {
-            ProcessBuilder pb = new ProcessBuilder("/bin/bash");
-            Process p = pb.start();
-            BufferedWriter p_stdin = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
-            putCommand(p_stdin, String.format("cd ./submissions/Assignment-%s/%s", asstnum, username));
-            putCommand(p_stdin, String.format("javac %s.java", mainclassname));
-            putCommand(p_stdin, String.format("java %s %s", mainclassname, input));
-            putCommand(p_stdin, String.format("exit"));
-
-            String actualOutput = "";
-            Scanner s = new Scanner(p.getInputStream());
-            while(s.hasNext()) actualOutput=actualOutput+s.next(); s.close();
-            //System.out.println(output.toString());
+            String[] commands =
+                    { String.format("cd ./submissions/Assignment-%s/%s", asstnum, username),
+                            String.format("javac %s.java", mainclassname),
+                            String.format("java %s %s", mainclassname, input),
+                    };
+            String actualOutput = executeShellCommands(commands);
             return String.format("input: %s, output: %s, expected output: %s", input, actualOutput.toString(), output);
 
         } catch (IOException e) {
@@ -208,9 +202,18 @@ public class Model {
         }
     }
 
-    private String cutExtension(String filename){
-        String[] cutname = filename.split("\\.");
-        return cutname[0];
+    private String executeShellCommands(String[] commands) throws IOException {
+        String output = "";
+        ProcessBuilder pb = new ProcessBuilder("/bin/bash");
+        Process p = pb.start();
+        BufferedWriter p_stdin = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
+        for (int i = 0; i < commands.length; i++)
+            putCommand(p_stdin, commands[i]);
+        putCommand(p_stdin, "exit");
+        Scanner s = new Scanner(p.getInputStream());
+        while (s.hasNext()) output = output + s.next();
+        s.close();
+        return output;
     }
 
     private void putCommand(BufferedWriter p_stdin, String commd) throws IOException{
