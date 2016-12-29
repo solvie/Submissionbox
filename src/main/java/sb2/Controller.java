@@ -78,14 +78,14 @@ public class Controller {
 
     @RequestMapping(value="/upload", method=RequestMethod.POST)
     public @ResponseBody String handleFileUpload (
-            @RequestParam("file") MultipartFile file, @RequestParam("username") String username, @RequestParam("asstnum") int asstnum)
+            @RequestParam("file") MultipartFile file, @RequestParam("username") String username, @RequestParam("mainfilename") String mainclassname,@RequestParam("asstnum") int asstnum)
             throws Exception{
         System.out.println("uploading...");
         Message acceptFileMessage = this.model.acceptFile(file, username, asstnum);
         System.out.println("file was accepted");
         if (acceptFileMessage.getMessagetype()==FAIL) return acceptFileMessage.getValue();
         System.out.println("running tests");
-        return "message says"+this.model.runTests(username, asstnum).getValue();
+        return "message says"+this.model.runTests(acceptFileMessage.getValue(), mainclassname, username, asstnum).getValue();
         //return acceptFileMessage;
     }
 

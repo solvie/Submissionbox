@@ -6,18 +6,17 @@ import org.springframework.web.multipart.MultipartFile;
 import sb2.exceptions.BadConfigXlsxException;
 import sb2.exceptions.ExcelOpenError;
 import sb2.exceptions.FileSystemException;
+import sb2.exceptions.ShellException;
 import sb2.modelobjects.Message;
 import sb2.modelobjects.SbAssignment;
 import sb2.modelobjects.SbUser;
 import sb2.util.DBReadWriter;
 import sb2.util.ExcelReadWriter;
 
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Scanner;
 
 /**
  * Created by solvie on 2016-11-20.
@@ -98,6 +97,7 @@ public class Model {
                 BufferedOutputStream stream = new BufferedOutputStream(new FileOutputStream(new File(tempDir + "/" + name)));
                 stream.write(bytes);
                 stream.close();
+                //TODO: clean if there already is stuff
             } catch (IOException e) {
                 throw new IOException("Failed to upload the file => " + e.getMessage());
             }
@@ -107,15 +107,31 @@ public class Model {
                 //
                 if (currAsst.getTestFormat()== SbAssignment.TestFormat.OUTPUT) {
                     java.lang.Runtime.getRuntime().exec("mkdir -p "+submissionDir).waitFor();
-                    if (name.contains(".zip"))
-                        java.lang.Runtime.getRuntime().exec("unzip " + tempDir + "/" + name + " -d " + submissionDir).waitFor();
+                    System.out.println(submissionDir);
+                    if (name.contains(".zip")) {
+                        String unzip = String.format("unzip %s/%s -d %s/", tempDir, name, tempDir);
+                        ProcessBuilder pb = new ProcessBuilder("/bin/bash");
+                        Process p = pb.start();
+                        BufferedWriter p_stdin = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
+                        putCommand(p_stdin, unzip);
+                        String moveJava = String.format(
+                                "for entry in $(find %s/. -name *.java); " +
+                                        " do if [[ $entry != *_MACOSX* ]]; then mv $entry %s; fi; "+
+                                        " done;", tempDir, submissionDir);
+
+                        System.out.println(moveJava);
+                        putCommand(p_stdin, moveJava);
+                        putCommand(p_stdin, "exit");
+
+
+                    }
                     else
                         java.lang.Runtime.getRuntime().exec("mv " + tempDir + "/" + name + " " + submissionDir).waitFor();
                 }
             } catch (Exception e){
-
+                //todo
             }
-            return new Message(Message.Mtype.SUCCESS, "You successfully uploaded " + name + "!");
+            return new Message(Message.Mtype.SUCCESS, name);
 
         } else {
             throw new IOException("Failed to upload file because it was empty.");
@@ -123,22 +139,13 @@ public class Model {
     }
 
 
-    public Message runTests(String username, int asstnum){
-        /*
-            different types of run scripts:
-                - output checking run scripts, just input output
-                    - javac or
-                    - C
-                - unit testing
-                    - junit
-                    - cutest
-         */
+    public Message runTests(String filename, String mainclassname, String username, int asstnum){
         SbAssignment assignment = SbAssignment.findAsst(this.assignments, asstnum);
         if (assignment.getTestFormat()== SbAssignment.TestFormat.OUTPUT){
             if (assignment.getLanguage()== SbAssignment.Language.C)
                 outputTestC();
             else if (assignment.getLanguage()==SbAssignment.Language.JAVA)
-                return outputTestJava(asstnum);
+                return runOutputTestJava(mainclassname, username, asstnum);
         } else if (assignment.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST){
             if (assignment.getLanguage()==SbAssignment.Language.C)
                 unitTestC();
@@ -152,12 +159,22 @@ public class Model {
         System.out.println("Testing output with C");
     }
 
-    private Message outputTestJava(int asstnum){
+    private Message runOutputTestJava(String mainclassname,  String username, int asstnum){
         System.out.println("Testing output with Java");
         DualHashBidiMap<String, String> tests = SbAssignment.findAsst(this.assignments, asstnum).getOutputTests();
         //for each test, run them and see the expected value
         List<String> results= new ArrayList<>();
-        tests.forEach((k,v) -> results.add(dosomething(k, v)));
+        tests.forEach(
+                (k, v) -> {
+                    String ans;
+                    try {
+                        ans = testJavaOutput(asstnum, username, mainclassname, k, v);
+                    } catch (ShellException e) { //TODO: this shouldn't be an excelopenerror.
+                        ans = "ERROR."+e.getMessage();
+                    }
+                    results.add(ans);
+                    }
+        );
         return new Message(Message.Mtype.SUCCESS, results.toString());
     }
 
@@ -169,10 +186,40 @@ public class Model {
         System.out.println("Unit testing with Java");
     }
 
-    //test
-    private String dosomething(String k, String v){
-        return k+" "+v;
+    //TODO this should throw (more specific) errors if timeout, and other such stuff.
+    private String testJavaOutput(int asstnum, String username, String mainclassname, String input, String output) throws ShellException{
+        try {
+            ProcessBuilder pb = new ProcessBuilder("/bin/bash");
+            Process p = pb.start();
+            BufferedWriter p_stdin = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
+            putCommand(p_stdin, String.format("cd ./submissions/Assignment-%s/%s", asstnum, username));
+            putCommand(p_stdin, String.format("javac %s.java", mainclassname));
+            putCommand(p_stdin, String.format("java %s %s", mainclassname, input));
+            putCommand(p_stdin, String.format("exit"));
+
+            String actualOutput = "";
+            Scanner s = new Scanner(p.getInputStream());
+            while(s.hasNext()) actualOutput=actualOutput+s.next(); s.close();
+            //System.out.println(output.toString());
+            return String.format("input: %s, output: %s, expected output: %s", input, actualOutput.toString(), output);
+
+        } catch (IOException e) {
+            throw new ShellException("IOException while compiling and running java");
+        }
     }
+
+    private String cutExtension(String filename){
+        String[] cutname = filename.split("\\.");
+        return cutname[0];
+    }
+
+    private void putCommand(BufferedWriter p_stdin, String commd) throws IOException{
+        p_stdin.write(commd);
+        p_stdin.newLine();
+        p_stdin.flush();
+    }
+
+
 
     //-- helpers --
 
