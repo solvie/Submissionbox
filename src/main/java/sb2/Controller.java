@@ -85,7 +85,7 @@ public class Controller {
         System.out.println("file was accepted");
         if (acceptFileMessage.getMessagetype()==FAIL) return acceptFileMessage.getValue();
         System.out.println("Running tests");
-        String output = this.model.runTests(acceptFileMessage.getValue(), mainclassname, username, asstnum).getValue();
+        String output = this.model.runTests(mainclassname, username, asstnum).getValue();
         System.out.println("Done running tests");
         return "message says "+ output;
 

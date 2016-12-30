@@ -1,8 +1,8 @@
 package sb2;
 
 import org.apache.commons.collections4.bidimap.DualHashBidiMap;
-import org.apache.tomcat.jni.Time;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.method.P;
 import org.springframework.web.multipart.MultipartFile;
 import sb2.exceptions.BadConfigXlsxException;
 import sb2.exceptions.ExcelOpenError;
@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+
+import static java.lang.Thread.sleep;
 
 /**
  * Created by solvie on 2016-11-20.
@@ -111,9 +113,11 @@ public class Model {
                     java.lang.Runtime.getRuntime().exec("mkdir -p "+submissionDir).waitFor();
                     System.out.println(submissionDir);
                     if (name.contains(".zip")) {
+                        System.out.println("unzipping");
 
                         String[] unzip = {String.format("unzip %s/%s -d %s/", tempDir, name, tempDir)};
                         executeShellCommands(unzip);
+                        System.out.println("unzipped");
 
                         String[] moveJava = {String.format(
                                 "for entry in $(find %s/. -name *.java); " +
@@ -135,13 +139,10 @@ public class Model {
     }
 
 
-    public Message runTests(String filename, String mainclassname, String username, int asstnum){
+    public Message runTests(String mainclassname, String username, int asstnum){
         SbAssignment assignment = SbAssignment.findAsst(this.assignments, asstnum);
         if (assignment.getTestFormat()== SbAssignment.TestFormat.OUTPUT){
-            if (assignment.getLanguage()== SbAssignment.Language.C)
-                outputTestC();
-            else if (assignment.getLanguage()==SbAssignment.Language.JAVA)
-                return runOutputTestJava(mainclassname, username, asstnum);
+            return runOutputTest(mainclassname, username, asstnum);
         } else if (assignment.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST){
             if (assignment.getLanguage()==SbAssignment.Language.C)
                 unitTestC();
@@ -151,23 +152,18 @@ public class Model {
         return new Message(Message.Mtype.WARNING, "not done yet, TODO");
     }
 
-    private void outputTestC(){
-        System.out.println("Testing output with C");
-    }
-
-    private Message runOutputTestJava(String mainclassname,  String username, int asstnum){
-        System.out.println("Testing output with Java");
+    private Message runOutputTest(String mainclassname,  String username, int asstnum){
         DualHashBidiMap<String, String> tests = SbAssignment.findAsst(this.assignments, asstnum).getOutputTests();
         //for each test, run them and see the expected value
         List<String> results= new ArrayList<>();
         try {
-            if (testJavaCompile(asstnum, username, mainclassname)) //if it compiles, run the tests.
+            if (testCompiles(asstnum, username, mainclassname)) //if it compiles, run the tests.
                 tests.forEach(
                         (k, v) -> {
                             String ans;
                             try {
-                                ans = testJavaOutput(asstnum, username, mainclassname, k, v);
-                            } catch (ShellException e) { //TODO: this shouldn't be an excelopenerror.
+                                ans = testOutput(asstnum, username, mainclassname, k, v);
+                            } catch (ShellException e) {
                                 ans = "ERROR." + e.getMessage();
                             }
                             results.add(ans);
@@ -187,11 +183,18 @@ public class Model {
         System.out.println("Unit testing with Java");
     }
 
-    private boolean testJavaCompile(int asstnum, String username, String mainclassname) throws ShellException{
+    private boolean testCompiles(int asstnum, String username, String mainclassname) throws ShellException{
+        String compileLine="";
+        SbAssignment asst = SbAssignment.findAsst(this.assignments, asstnum);
+        if (asst.getLanguage()== SbAssignment.Language.JAVA)
+            compileLine = String.format("javac %s.java", mainclassname);
+        else if (asst.getLanguage()== SbAssignment.Language.C)
+            compileLine = "";
+
         try {
             String[] commands =
                     { String.format("cd ./submissions/Assignment-%s/%s", asstnum, username),
-                            String.format("javac %s.java", mainclassname),
+                            compileLine,
                     };
             executeShellCommands(commands);//TODO: needs to return false if doesn't compile
             return true;
@@ -203,11 +206,18 @@ public class Model {
     }
 
     //TODO this should throw (more specific) errors if timeout, and other such stuff.
-    private String testJavaOutput(int asstnum, String username, String mainclassname, String input, String output) throws ShellException{
+    private String testOutput(int asstnum, String username, String mainclassname, String input, String output) throws ShellException{
+        String runLine="";
+        SbAssignment asst = SbAssignment.findAsst(this.assignments, asstnum);
+        if (asst.getLanguage()== SbAssignment.Language.JAVA)
+            runLine = String.format("java %s %s", mainclassname, input);
+        else if (asst.getLanguage()== SbAssignment.Language.C)
+            runLine = "";
+
         try {
             String[] commands =
                     { String.format("cd ./submissions/Assignment-%s/%s", asstnum, username),
-                            String.format("java %s %s", mainclassname, input),
+                            runLine,
                     };
             String actualOutput = executeShellCommands(commands);
             return String.format("input: %s, output: %s, expected output: %s", input, actualOutput.toString(), output);
@@ -219,34 +229,38 @@ public class Model {
         }
     }
 
+
+
     private String executeShellCommands(String[] commands) throws IOException, TimeoutException {
+//TODO: Doesn't timeout, just force exits for now
         String output = "";
         ProcessBuilder pb = new ProcessBuilder("/bin/bash");
         Process p = pb.start();
         BufferedWriter p_stdin = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
         for (int i = 0; i < commands.length; i++) {
             putCommand(p_stdin, commands[i]);
-            try {
-                if (!p.waitFor(5, TimeUnit.SECONDS)) {
-                    p.destroyForcibly();
-                    throw new TimeoutException("Timed out, does your code prompt user for input?");
-                }
-            }catch (InterruptedException e){
-                throw new TimeoutException("Interrupted while checking timeout..."); //fixme
-            }
         }
+        //putCommand(p_stdin, "Ctrl-C");
         putCommand(p_stdin, "exit");
+        //Close to force quit
+        p_stdin.close();
+
         Scanner s = new Scanner(p.getInputStream());
         while (s.hasNext()) output = output + s.next();
         s.close();
         return output;
+
     }
 
-    private void putCommand(BufferedWriter p_stdin, String commd) throws IOException{
+    private void putCommand(BufferedWriter p_stdin, String commd) throws IOException, TimeoutException{
+        System.out.println(commd);
         p_stdin.write(commd);
         p_stdin.newLine();
         p_stdin.flush();
+
     }
+
+
 
 
 
