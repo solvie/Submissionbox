@@ -16,6 +16,7 @@ import sb2.util.ExcelReadWriter;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
@@ -111,22 +112,18 @@ public class Model {
                 //
                 if (currAsst.getTestFormat()== SbAssignment.TestFormat.OUTPUT) {
                     java.lang.Runtime.getRuntime().exec("mkdir -p "+submissionDir).waitFor();
-                    System.out.println(submissionDir);
                     if (name.contains(".zip")) {
-                        System.out.println("unzipping");
-
-                        String[] unzip = {String.format("unzip %s/%s -d %s/", tempDir, name, tempDir)};
+                        List<String> unzip = Arrays.asList(String.format("unzip %s/%s -d %s/", tempDir, name, tempDir));
                         executeShellCommands(unzip);
-                        System.out.println("unzipped");
-
-                        String[] moveJava = {String.format(
+                        List<String> moveJava = Arrays.asList(String.format(
                                 "for entry in $(find %s/. -name *.java); " +
                                         " do if [[ $entry != *_MACOSX* ]]; then mv $entry %s; fi; "+
-                                        " done;", tempDir, submissionDir)};
+                                        " done;", tempDir, submissionDir));
                         executeShellCommands(moveJava);
                     }
                     else
                         java.lang.Runtime.getRuntime().exec("mv " + tempDir + "/" + name + " " + submissionDir).waitFor();
+                        System.out.println("moved single file input");
                 }
             } catch (Exception e){
                 //todo
@@ -186,20 +183,30 @@ public class Model {
     private boolean testCompiles(int asstnum, String username, String mainclassname) throws ShellException{
         String compileLine="";
         SbAssignment asst = SbAssignment.findAsst(this.assignments, asstnum);
-        if (asst.getLanguage()== SbAssignment.Language.JAVA)
-            compileLine = String.format("javac %s.java", mainclassname);
-        else if (asst.getLanguage()== SbAssignment.Language.C)
-            compileLine = "";
+        List<String> commands = new ArrayList<>();
+        if (asst.getLanguage()== SbAssignment.Language.JAVA) {
+            commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
+            commands.add(String.format("javac %s.java", mainclassname));
+        }
+        else if (asst.getLanguage()== SbAssignment.Language.C) {
+            //commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
+            //commands.add(String.format("gcc -o target %s", mainclassname));
+            commands.add(String.format("echo fixme"));
+
+        }
 
         try {
-            String[] commands =
-                    { String.format("cd ./submissions/Assignment-%s/%s", asstnum, username),
-                            compileLine,
-                    };
+            System.out.println("Compiling...");
             executeShellCommands(commands);//TODO: needs to return false if doesn't compile
+            sleep(2000);
+            executeShellCommands(commands);//TODO: needs to return false if doesn't compile
+            sleep(2000);
+
             return true;
         } catch (IOException e) {
             throw new ShellException("IOException while compiling java");
+        } catch (InterruptedException e) {
+            throw new ShellException("just for sleep");//fixme
         } catch (TimeoutException e){
             throw new ShellException(e.getMessage());
         }
@@ -209,16 +216,20 @@ public class Model {
     private String testOutput(int asstnum, String username, String mainclassname, String input, String output) throws ShellException{
         String runLine="";
         SbAssignment asst = SbAssignment.findAsst(this.assignments, asstnum);
-        if (asst.getLanguage()== SbAssignment.Language.JAVA)
-            runLine = String.format("java %s %s", mainclassname, input);
-        else if (asst.getLanguage()== SbAssignment.Language.C)
-            runLine = "";
+        List<String> commands = new ArrayList<>();
+
+        if (asst.getLanguage()== SbAssignment.Language.JAVA) {
+            commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
+            commands.add(String.format("java %s %s", mainclassname, input));
+        }
+        else if (asst.getLanguage()== SbAssignment.Language.C) {
+            commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
+            commands.add(String.format("gcc -o target %s", mainclassname)); //compiles is here for now because something's wrong
+            commands.add(String.format("./target %s", input));
+        }
 
         try {
-            String[] commands =
-                    { String.format("cd ./submissions/Assignment-%s/%s", asstnum, username),
-                            runLine,
-                    };
+
             String actualOutput = executeShellCommands(commands);
             return String.format("input: %s, output: %s, expected output: %s", input, actualOutput.toString(), output);
 
@@ -231,14 +242,14 @@ public class Model {
 
 
 
-    private String executeShellCommands(String[] commands) throws IOException, TimeoutException {
+    private String executeShellCommands(List<String> commands) throws IOException, TimeoutException {
 //TODO: Doesn't timeout, just force exits for now
         String output = "";
         ProcessBuilder pb = new ProcessBuilder("/bin/bash");
         Process p = pb.start();
         BufferedWriter p_stdin = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
-        for (int i = 0; i < commands.length; i++) {
-            putCommand(p_stdin, commands[i]);
+        for (int i = 0; i < commands.size(); i++) {
+            putCommand(p_stdin, commands.get(i));
         }
         //putCommand(p_stdin, "Ctrl-C");
         putCommand(p_stdin, "exit");
