@@ -2,7 +2,6 @@ package sb2;
 
 import org.apache.commons.collections4.bidimap.DualHashBidiMap;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.access.method.P;
 import org.springframework.web.multipart.MultipartFile;
 import sb2.exceptions.BadConfigXlsxException;
 import sb2.exceptions.ExcelOpenError;
@@ -19,7 +18,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Scanner;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import static java.lang.Thread.sleep;
@@ -89,13 +87,16 @@ public class Model {
         return excelReadWriter.readClasslist(excelReadWriter.attemptGetSheet(pathToResources+"classlist.xlsx", "Sheet1"));
     }
 
-    //TODO: after extracting info, use the info to sort it into the right directory.
+    //TODO: need to handle if student already has directory/ if they already have code in it.
 
     public Message acceptFile(MultipartFile file, String username, int asstnum) throws IOException, InterruptedException, FileSystemException{
+
         if (!file.isEmpty()) {
             String name = file.getOriginalFilename();
             String tempDir = "./temp/"+username;
             String submissionDir = "./submissions/assignment-"+asstnum+"/"+ username+"/";
+            String submissionDirUnitTests = "./submissions/assignment-"+asstnum+"/src/UnderTest/"+ username+"/";
+
             try {
                 byte[] bytes = file.getBytes();
                 java.lang.Runtime.getRuntime().exec("mkdir -p "+tempDir).waitFor();
@@ -124,6 +125,18 @@ public class Model {
                     else
                         java.lang.Runtime.getRuntime().exec("mv " + tempDir + "/" + name + " " + submissionDir).waitFor();
                         System.out.println("moved single file input");
+                } else if (currAsst.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST){
+                    //TODO need to figure out how the canonical way to upload unit tests should be.
+                    //initial thoughts: classlist (maybe with an  "instructor-list sheet") should be initialized with the server
+                    // instructors have the additional power to set assignments config, after the server is up and running
+                    //TODO when moving the thing over, rename the student's main method to "studentmain" or something similar
+                    //TODO: for now this takes care of only single c file submssions
+                    List<String> moveC = Arrays.asList(String.format("mkdir -p %s", submissionDirUnitTests),
+                            String.format("mv %s %s", tempDir+"/"+name, submissionDirUnitTests)
+                            //TODO: first test the sed thing on laptop then put the sed thing ehre
+                    );
+                    executeShellCommands(moveC);
+
                 }
             } catch (Exception e){
                 //todo
@@ -142,7 +155,8 @@ public class Model {
             return runOutputTest(mainclassname, username, asstnum);
         } else if (assignment.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST){
             if (assignment.getLanguage()==SbAssignment.Language.C)
-                unitTestC();
+                runUnitTestsC(mainclassname, username, asstnum); //TODO: return results obvs. But when running, just do the run.sh script call.
+
             else if (assignment.getLanguage()== SbAssignment.Language.JAVA)
                 unitTestJava();
         }
@@ -172,8 +186,18 @@ public class Model {
         return new Message(Message.Mtype.SUCCESS, results.toString());
     }
 
-    private void unitTestC(){
+    private Message runUnitTestsC(String mainclassname,  String username, int asstnum){
+        String result="";
         System.out.println("Unit testing with C");
+        try {
+            if (testCompiles(asstnum, username, mainclassname)) //if it compiles, run the tests.
+                System.out.println("do stuff");
+                //DOSTUFF
+        } catch (ShellException e){
+            result= "ERROR WHILE COMPILING" + e.getMessage();
+        }
+        return new Message(Message.Mtype.SUCCESS, result);
+
     }
 
     private void unitTestJava(){
@@ -181,7 +205,6 @@ public class Model {
     }
 
     private boolean testCompiles(int asstnum, String username, String mainclassname) throws ShellException{
-        String compileLine="";
         SbAssignment asst = SbAssignment.findAsst(this.assignments, asstnum);
         List<String> commands = new ArrayList<>();
         if (asst.getLanguage()== SbAssignment.Language.JAVA) {
@@ -189,10 +212,8 @@ public class Model {
             commands.add(String.format("javac %s.java", mainclassname));
         }
         else if (asst.getLanguage()== SbAssignment.Language.C) {
-            //commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
-            //commands.add(String.format("gcc -o target %s", mainclassname));
-            commands.add(String.format("echo fixme"));
-
+            commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
+            commands.add(String.format("gcc -o target %s", mainclassname)); //fixme didn't test.
         }
 
         try {
@@ -225,7 +246,7 @@ public class Model {
         else if (asst.getLanguage()== SbAssignment.Language.C) {
             commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
             commands.add(String.format("gcc -o target %s", mainclassname)); //compiles is here for now because something's wrong
-            commands.add(String.format("./target %s", input));
+            commands.add(String.format("./target %s", input)); //fixme need to catch errorstream
         }
 
         try {
