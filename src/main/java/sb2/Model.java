@@ -18,7 +18,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Scanner;
-import java.util.concurrent.TimeoutException;
 
 import static java.lang.Thread.sleep;
 
@@ -40,16 +39,6 @@ public class Model {
         return initClasslist();
     }
 
-    /* Directory structure  should look like:
-     SubmissionBox2.0
-     |-> submissions
-          |-> assignment-1
-               |-> nikola_tesla
-               |-> albert_einstein
-                      ...
-          |-> assignment-2
-              ...
-          |-> assignment-n  */
     public boolean initFileSystem() throws FileSystemException, ExcelOpenError, BadConfigXlsxException, InterruptedException {
         //TODO: If the submissions folder exists, throw an error if it doesn't look like what the assignments-config says it should look like
         //If the submission folder doesn't exist, create it from scratch with the assignments-config information.
@@ -129,11 +118,11 @@ public class Model {
                     //TODO need to figure out how the canonical way to upload unit tests should be.
                     //initial thoughts: classlist (maybe with an  "instructor-list sheet") should be initialized with the server
                     // instructors have the additional power to set assignments config, after the server is up and running
-                    //TODO when moving the thing over, rename the student's main method to "studentmain" or something similar
                     //TODO: for now this takes care of only single c file submssions
                     List<String> moveC = Arrays.asList(String.format("mkdir -p %s", submissionDirUnitTests),
-                            String.format("mv %s %s", tempDir+"/"+name, submissionDirUnitTests)
-                            //TODO: first test the sed thing on laptop then put the sed thing ehre
+                            String.format("mv %s %s", tempDir+"/"+name, submissionDirUnitTests),
+                            String.format("cd %s", submissionDirUnitTests),
+                            String.format("sed -i 's/main\\(.*argv\\)/studentmain\\1/' %s", name)
                     );
                     executeShellCommands(moveC);
 
@@ -155,8 +144,7 @@ public class Model {
             return runOutputTest(mainclassname, username, asstnum);
         } else if (assignment.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST){
             if (assignment.getLanguage()==SbAssignment.Language.C)
-                runUnitTestsC(mainclassname, username, asstnum); //TODO: return results obvs. But when running, just do the run.sh script call.
-
+                return runUnitTestsC(mainclassname, username, asstnum); //TODO: return results obvs. But when running, just do the run.sh script call.
             else if (assignment.getLanguage()== SbAssignment.Language.JAVA)
                 unitTestJava();
         }
@@ -187,14 +175,24 @@ public class Model {
     }
 
     private Message runUnitTestsC(String mainclassname,  String username, int asstnum){
+        String submissionDirUnitTests = "./submissions/assignment-"+asstnum+"/src/UnderTest/"+ username+"/";
         String result="";
         System.out.println("Unit testing with C");
         try {
-            if (testCompiles(asstnum, username, mainclassname)) //if it compiles, run the tests.
+            if (testCompiles(asstnum, username, mainclassname)) { //if it compiles, run the tests.
                 System.out.println("do stuff");
                 //DOSTUFF
+                List<String> runUnitTests = Arrays.asList(
+                        String.format("bash run.sh -f %s -n %d -u %s", mainclassname, asstnum, username )
+                );
+                result = executeShellCommands(runUnitTests);
+                System.out.println("result was: "+ result);
+                return new Message(Message.Mtype.SUCCESS, result);
+            }
         } catch (ShellException e){
             result= "ERROR WHILE COMPILING" + e.getMessage();
+        } catch (IOException e){
+            result= "IOException :"+ e.getMessage();
         }
         return new Message(Message.Mtype.SUCCESS, result);
 
@@ -211,25 +209,23 @@ public class Model {
             commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
             commands.add(String.format("javac %s.java", mainclassname));
         }
-        else if (asst.getLanguage()== SbAssignment.Language.C) {
+        else if (asst.getLanguage()== SbAssignment.Language.C && asst.getTestFormat()== SbAssignment.TestFormat.OUTPUT) {
             commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
             commands.add(String.format("gcc -o target %s", mainclassname)); //fixme didn't test.
+        } else if (asst.getLanguage()== SbAssignment.Language.C && asst.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST){
+            //TODO:
+            return true;
         }
 
         try {
             System.out.println("Compiling...");
             executeShellCommands(commands);//TODO: needs to return false if doesn't compile
-            sleep(2000);
-            executeShellCommands(commands);//TODO: needs to return false if doesn't compile
-            sleep(2000);
-
+            sleep(100);
             return true;
         } catch (IOException e) {
             throw new ShellException("IOException while compiling java");
         } catch (InterruptedException e) {
             throw new ShellException("just for sleep");//fixme
-        } catch (TimeoutException e){
-            throw new ShellException(e.getMessage());
         }
     }
 
@@ -256,14 +252,12 @@ public class Model {
 
         } catch (IOException e) {
             throw new ShellException("IOException while compiling and running java");
-        } catch (TimeoutException e){
-            throw new ShellException(e.getMessage());
         }
     }
 
 
 
-    private String executeShellCommands(List<String> commands) throws IOException, TimeoutException {
+    private String executeShellCommands(List<String> commands) throws IOException {
 //TODO: Doesn't timeout, just force exits for now
         String output = "";
         ProcessBuilder pb = new ProcessBuilder("/bin/bash");
@@ -272,10 +266,10 @@ public class Model {
         for (int i = 0; i < commands.size(); i++) {
             putCommand(p_stdin, commands.get(i));
         }
-        //putCommand(p_stdin, "Ctrl-C");
         putCommand(p_stdin, "exit");
-        //Close to force quit
-        p_stdin.close();
+
+        p_stdin.close();        //Close to force quit (so that nothing ends up hanging)
+
 
         Scanner s = new Scanner(p.getInputStream());
         while (s.hasNext()) output = output + s.next();
@@ -284,19 +278,12 @@ public class Model {
 
     }
 
-    private void putCommand(BufferedWriter p_stdin, String commd) throws IOException, TimeoutException{
+    private void putCommand(BufferedWriter p_stdin, String commd) throws IOException{
         System.out.println(commd);
         p_stdin.write(commd);
         p_stdin.newLine();
         p_stdin.flush();
 
     }
-
-
-
-
-
-    //-- helpers --
-
 
 }
