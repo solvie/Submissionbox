@@ -248,6 +248,7 @@ public class Model {
         try {
 
             String actualOutput = executeShellCommands(commands);
+            System.out.println(actualOutput);
             return String.format("input: %s, output: %s, expected output: %s", input, actualOutput.toString(), output);
 
         } catch (IOException e) {
@@ -272,14 +273,14 @@ public class Model {
 
 
         Scanner s = new Scanner(p.getInputStream());
-        while (s.hasNext()) output = output + s.next();
+        while (s.hasNext()) output = output + s.nextLine();
         s.close();
         return output;
 
     }
 
     private void putCommand(BufferedWriter p_stdin, String commd) throws IOException{
-        System.out.println(commd);
+        //System.out.println(commd);
         p_stdin.write(commd);
         p_stdin.newLine();
         p_stdin.flush();
