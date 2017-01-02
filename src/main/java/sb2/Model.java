@@ -309,7 +309,7 @@ public class Model {
             if (allerrors.length()>0) throw new ShellException(String.format("bash error: %s", allerrors));
 
             Scanner s = new Scanner(p.getInputStream());
-            while (s.hasNext()) output = output + s.nextLine();
+            while (s.hasNext()) output = output +" >> "+ s.nextLine();
             s.close();
             return output;
 
