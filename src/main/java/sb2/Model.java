@@ -1,5 +1,6 @@
 package sb2;
 
+import jdk.nashorn.tools.Shell;
 import org.apache.commons.collections4.bidimap.DualHashBidiMap;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.multipart.MultipartFile;
@@ -84,7 +85,8 @@ public class Model {
             String name = file.getOriginalFilename();
             String tempDir = "./temp/"+username;
             String submissionDir = "./submissions/assignment-"+asstnum+"/"+ username+"/";
-            String submissionDirUnitTests = "./submissions/assignment-"+asstnum+"/src/UnderTest/"+ username+"/";
+            String submissionDirUnitTestsC = "./submissions/assignment-"+asstnum+"/src/UnderTest/"+ username+"/";
+            String submissionDirUnitTestsJava = "./submissions/assignment-"+asstnum+"/"+ username+"/";
 
             try {
                 byte[] bytes = file.getBytes();
@@ -113,18 +115,41 @@ public class Model {
                     }
                     else
                         java.lang.Runtime.getRuntime().exec("mv " + tempDir + "/" + name + " " + submissionDir).waitFor();
-                        System.out.println("moved single file input");
                 } else if (currAsst.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST){
                     //TODO need to figure out how the canonical way to upload unit tests should be.
                     //initial thoughts: classlist (maybe with an  "instructor-list sheet") should be initialized with the server
                     // instructors have the additional power to set assignments config, after the server is up and running
-                    //TODO: for now this takes care of only single c file submssions
-                    List<String> moveC = Arrays.asList(String.format("mkdir -p %s", submissionDirUnitTests),
-                            String.format("mv %s %s", tempDir+"/"+name, submissionDirUnitTests),
-                            String.format("cd %s", submissionDirUnitTests),
-                            String.format("sed -i 's/main\\(.*argv\\)/studentmain\\1/' %s", name)
-                    );
-                    executeShellCommands(moveC);
+                    //TODO: for now this takes care of only single c file submssions; assuming there's no makefile
+                    if (currAsst.getLanguage()== SbAssignment.Language.C) {
+                        List<String> moveC = Arrays.asList(String.format("mkdir -p %s", submissionDirUnitTestsC),
+                                String.format("mv %s %s", tempDir + "/" + name, submissionDirUnitTestsC),
+                                String.format("cd %s", submissionDirUnitTestsC),
+                                String.format("sed -i 's/main\\(.*argv\\)/studentmain\\1/' %s", name)
+                        );
+                        executeShellCommands(moveC);
+                    } else if (currAsst.getLanguage()== SbAssignment.Language.JAVA){
+                        java.lang.Runtime.getRuntime().exec("mkdir -p "+submissionDirUnitTestsJava).waitFor();
+                        if (name.contains(".zip")) {
+                            List<String> unzip = Arrays.asList(String.format("unzip %s/%s -d %s/", tempDir, name, tempDir));
+                            executeShellCommands(unzip);
+                            List<String> moveJava = Arrays.asList(String.format(
+                                    "for entry in $(find %s/. -name *.java); " +
+                                            " do if [[ $entry != *_MACOSX* ]]; then mv $entry %s; fi; "+
+                                            " done;", tempDir, submissionDirUnitTestsJava),
+                                    String.format("cd %s", submissionDirUnitTestsJava),
+                                    String.format("sed -i 's/main\\(.*public static void main\\)/studentmain\\1/' %s", name)
+                                    );
+                            executeShellCommands(moveJava);
+
+                        }else {
+                            List<String> moveJava = Arrays.asList(String.format("mkdir -p %s", submissionDirUnitTestsJava),
+                                    String.format("mv %s %s", tempDir + "/" + name, submissionDirUnitTestsJava),
+                                    String.format("cd %s", submissionDirUnitTestsJava),
+                                    String.format("sed -i 's/main\\(.*public static void main\\)/studentmain\\1/' %s", name)
+                            );
+                            executeShellCommands(moveJava);
+                        }
+                    }
 
                 }
             } catch (Exception e){
@@ -146,9 +171,9 @@ public class Model {
             if (assignment.getLanguage()==SbAssignment.Language.C)
                 return runUnitTestsC(mainclassname, username, asstnum); //TODO: return results obvs. But when running, just do the run.sh script call.
             else if (assignment.getLanguage()== SbAssignment.Language.JAVA)
-                unitTestJava();
+                return unitTestJava(mainclassname, username, asstnum);
         }
-        return new Message(Message.Mtype.WARNING, "not done yet, TODO");
+        return new Message(Message.Mtype.WARNING, "Something went wrong;");
     }
 
     private Message runOutputTest(String mainclassname,  String username, int asstnum){
@@ -180,8 +205,6 @@ public class Model {
         System.out.println("Unit testing with C");
         try {
             if (testCompiles(asstnum, username, mainclassname)) { //if it compiles, run the tests.
-                System.out.println("do stuff");
-                //DOSTUFF
                 List<String> runUnitTests = Arrays.asList(
                         String.format("bash run.sh -f %s -n %d -u %s", mainclassname, asstnum, username )
                 );
@@ -198,16 +221,45 @@ public class Model {
 
     }
 
-    private void unitTestJava(){
+    private Message unitTestJava(String mainclassname,  String username, int asstnum){
+        String submissionDirUnitTestsJava = "./submissions/assignment-"+asstnum+"/"+username;
+        String result = "Unit testing with Java in prog";
         System.out.println("Unit testing with Java");
+        try {
+            if (testCompiles(asstnum, username, mainclassname)){
+                List<String> runUnitTests = Arrays.asList(
+                        String.format("cd ./submissions/assignment-%s/%s", asstnum, username),
+                        String.format("javac %s.java && java %s", "TestRunner", "TestRunner")
+                );
+                result = executeShellCommands(runUnitTests);
+                System.out.println("result was: "+ result);
+                return new Message(Message.Mtype.SUCCESS, result);
+            }
+        } catch (ShellException e){
+            result= "ERROR WHILE COMPILING" + e.getMessage();
+        } catch (IOException e){
+            result= "ERROR WHILE COMPILING" + e.getMessage();
+        }
+        return new Message(Message.Mtype.SUCCESS, result);
+
     }
 
     private boolean testCompiles(int asstnum, String username, String mainclassname) throws ShellException{
+
         SbAssignment asst = SbAssignment.findAsst(this.assignments, asstnum);
         List<String> commands = new ArrayList<>();
-        if (asst.getLanguage()== SbAssignment.Language.JAVA) {
+        if (asst.getLanguage()== SbAssignment.Language.JAVA && asst.getTestFormat()== SbAssignment.TestFormat.OUTPUT) {
             commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
             commands.add(String.format("javac %s.java", mainclassname));
+        }else if (asst.getLanguage()== SbAssignment.Language.JAVA && asst.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST) {
+            commands.add(String.format("cd ./submissions/assignmentsss-%s/", asstnum));
+            commands.add(String.format("pwd"));
+
+            commands.add(String.format("cp %s %s && cp %s %s ", "TestRunner.java", "./"+username,
+                    "TestJunit.java", "./"+username));
+            commands.add(String.format("cd %s", "./"+username));
+            commands.add(String.format("javac %s", "TestRunner.java"));
+
         }
         else if (asst.getLanguage()== SbAssignment.Language.C && asst.getTestFormat()== SbAssignment.TestFormat.OUTPUT) {
             commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
@@ -219,7 +271,9 @@ public class Model {
 
         try {
             System.out.println("Compiling...");
-            executeShellCommands(commands);//TODO: needs to return false if doesn't compile
+            String message=executeShellCommands(commands);//TODO: needs to return false if doesn't compile
+            System.out.println(String.format("Compile message... %s", message));
+
             sleep(100);
             return true;
         } catch (IOException e) {
@@ -248,7 +302,7 @@ public class Model {
         try {
 
             String actualOutput = executeShellCommands(commands);
-            System.out.println(actualOutput);
+            //System.out.println(actualOutput);
             return String.format("input: %s, output: %s, expected output: %s", input, actualOutput.toString(), output);
 
         } catch (IOException e) {
@@ -272,6 +326,14 @@ public class Model {
         p_stdin.close();        //Close to force quit (so that nothing ends up hanging)
 
 
+        InputStream error = p.getErrorStream();
+        InputStreamReader isrerror = new InputStreamReader(error);
+        BufferedReader bre = new BufferedReader(isrerror);
+        String line;
+        while ((line = bre.readLine()) != null) {
+            System.out.println(String.format("ERRORSTREAM: %s",line));
+        }
+
         Scanner s = new Scanner(p.getInputStream());
         while (s.hasNext()) output = output + s.nextLine();
         s.close();
@@ -280,7 +342,7 @@ public class Model {
     }
 
     private void putCommand(BufferedWriter p_stdin, String commd) throws IOException{
-        //System.out.println(commd);
+        System.out.println(commd);
         p_stdin.write(commd);
         p_stdin.newLine();
         p_stdin.flush();
