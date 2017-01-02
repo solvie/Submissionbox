@@ -75,88 +75,98 @@ public class Model {
         return excelReadWriter.readClasslist(excelReadWriter.attemptGetSheet(pathToResources+"classlist.xlsx", "Sheet1"));
     }
 
+    //HELPER FOR acceptFile
+    //makes directory if it doesn't exist, if it does exist, delete everything inside the directory.
+    //The path is assumed to be cd-able from where you are making it.
+    private void makeDirectory(String path) throws FileSystemException{
+        try { //Make a temp directory if there isn't already
+            executeShellCommands(Arrays.asList(("mkdir " + path)));
+        } catch (ShellException e){
+            System.out.println("There was already the dir ");
+            try { //If there was stuff in it, delete everything inside the directory.
+                executeShellCommands(Arrays.asList(String.format("rm -r %s/*", path)));
+            } catch (ShellException e2){
+                System.out.println("Nothing to delete in there?:"+ e2.getMessage());
+            }
+        }
+    }
+
     //TODO: need to handle if student already has directory/ if they already have code in it.
 
-    public Message acceptFile(MultipartFile file, String username, int asstnum) throws IOException, InterruptedException, FileSystemException{
+    public Message acceptFile(MultipartFile file, String username, int asstnum) throws FileSystemException{
 
         if (!file.isEmpty()) {
             String name = file.getOriginalFilename();
             String tempDir = "./temp/"+username;
-            String submissionDir = "./submissions/assignment-"+asstnum+"/"+ username+"/";
-            String submissionDirUnitTestsC = "./submissions/assignment-"+asstnum+"/src/UnderTest/"+ username+"/";
-            String submissionDirUnitTestsJava = "./submissions/assignment-"+asstnum+"/"+ username+"/";
+            String submissionDir = "./submissions/assignment-"+asstnum+"/"+ username;
+            String submissionDirUnitTestsC = "./submissions/assignment-"+asstnum+"/src/UnderTest/"+ username;
+            String submissionDirUnitTestsJava = "./submissions/assignment-"+asstnum+"/"+ username;
+
+            makeDirectory(tempDir);
 
             try {
                 byte[] bytes = file.getBytes();
-                java.lang.Runtime.getRuntime().exec("mkdir -p "+tempDir).waitFor();
                 BufferedOutputStream stream = new BufferedOutputStream(new FileOutputStream(new File(tempDir + "/" + name)));
                 stream.write(bytes);
                 stream.close();
-                //TODO: clean if there already is stuff
             } catch (IOException e) {
-                throw new IOException("Failed to upload the file => " + e.getMessage());
+                throw new FileSystemException("Failed to upload the file because of IOException " + e.getMessage());
             }
+
             try{
                 SbAssignment currAsst = SbAssignment.findAsst(this.assignments, asstnum);
-                System.out.println("Assignment found, "+ currAsst.getTestFormat());
-                //
-                if (currAsst.getTestFormat()== SbAssignment.TestFormat.OUTPUT) {
-                    java.lang.Runtime.getRuntime().exec("mkdir -p "+submissionDir).waitFor();
+
+                if (currAsst.getTestFormat()== SbAssignment.TestFormat.OUTPUT && currAsst.getLanguage()== SbAssignment.Language.JAVA) {
+                    makeDirectory(submissionDir);
                     if (name.contains(".zip")) {
-                        List<String> unzip = Arrays.asList(String.format("unzip %s/%s -d %s/", tempDir, name, tempDir));
-                        executeShellCommands(unzip);
-                        List<String> moveJava = Arrays.asList(String.format(
+                        executeShellCommands(Arrays.asList(
+                                String.format("unzip %s/%s -d %s/", tempDir, name, tempDir)));
+                        executeShellCommands(Arrays.asList(
+                                String.format(
                                 "for entry in $(find %s/. -name *.java); " +
                                         " do if [[ $entry != *_MACOSX* ]]; then mv $entry %s; fi; "+
-                                        " done;", tempDir, submissionDir));
-                        executeShellCommands(moveJava);
+                                        " done;", tempDir, submissionDir)));
                     }
                     else
-                        java.lang.Runtime.getRuntime().exec("mv " + tempDir + "/" + name + " " + submissionDir).waitFor();
-                } else if (currAsst.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST){
-                    //TODO need to figure out how the canonical way to upload unit tests should be.
-                    //initial thoughts: classlist (maybe with an  "instructor-list sheet") should be initialized with the server
-                    // instructors have the additional power to set assignments config, after the server is up and running
+                        executeShellCommands(Arrays.asList(("mv " + tempDir + "/" + name + " " + submissionDir)));
+
+                } else if (currAsst.getTestFormat()== SbAssignment.TestFormat.OUTPUT && currAsst.getLanguage()== SbAssignment.Language.C){
+                    executeShellCommands(Arrays.asList(("mv " + tempDir + "/" + name + " " + submissionDir)));
+
+                }else if (currAsst.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST ){
                     //TODO: for now this takes care of only single c file submssions; assuming there's no makefile
                     if (currAsst.getLanguage()== SbAssignment.Language.C) {
-                        List<String> moveC = Arrays.asList(String.format("mkdir -p %s", submissionDirUnitTestsC),
+                        makeDirectory(submissionDirUnitTestsC);
+                        executeShellCommands(Arrays.asList(
                                 String.format("mv %s %s", tempDir + "/" + name, submissionDirUnitTestsC),
-                                String.format("cd %s", submissionDirUnitTestsC),
-                                String.format("sed -i 's/main\\(.*argv\\)/studentmain\\1/' %s", name)
-                        );
-                        executeShellCommands(moveC);
+                                String.format("cd %s", submissionDirUnitTestsC)
+                        ));
+
                     } else if (currAsst.getLanguage()== SbAssignment.Language.JAVA){
-                        java.lang.Runtime.getRuntime().exec("mkdir -p "+submissionDirUnitTestsJava).waitFor();
+                        makeDirectory(submissionDirUnitTestsJava);
                         if (name.contains(".zip")) {
-                            List<String> unzip = Arrays.asList(String.format("unzip %s/%s -d %s/", tempDir, name, tempDir));
-                            executeShellCommands(unzip);
-                            List<String> moveJava = Arrays.asList(String.format(
+                            executeShellCommands(Arrays.asList(String.format("unzip %s/%s -d %s/", tempDir, name, tempDir)));
+                            executeShellCommands(Arrays.asList(String.format(
                                     "for entry in $(find %s/. -name *.java); " +
                                             " do if [[ $entry != *_MACOSX* ]]; then mv $entry %s; fi; "+
                                             " done;", tempDir, submissionDirUnitTestsJava),
-                                    String.format("cd %s", submissionDirUnitTestsJava),
-                                    String.format("sed -i 's/main\\(.*public static void main\\)/studentmain\\1/' %s", name)
-                                    );
-                            executeShellCommands(moveJava);
+                                    String.format("cd %s", submissionDirUnitTestsJava)
+                            ));
 
                         }else {
-                            List<String> moveJava = Arrays.asList(String.format("mkdir -p %s", submissionDirUnitTestsJava),
-                                    String.format("mv %s %s", tempDir + "/" + name, submissionDirUnitTestsJava),
-                                    String.format("cd %s", submissionDirUnitTestsJava),
-                                    String.format("sed -i 's/main\\(.*public static void main\\)/studentmain\\1/' %s", name)
-                            );
-                            executeShellCommands(moveJava);
+                            executeShellCommands(Arrays.asList(String.format("mv %s %s", tempDir + "/" + name, submissionDirUnitTestsJava),
+                                    String.format("cd %s", submissionDirUnitTestsJava)
+                            ));
                         }
                     }
 
                 }
-            } catch (Exception e){
-                //todo
+            } catch (ShellException e){
+                throw new FileSystemException("Failed to upload file: "+ e.getMessage());
             }
             return new Message(Message.Mtype.SUCCESS, name);
-
         } else {
-            throw new IOException("Failed to upload file because it was empty.");
+            throw new FileSystemException("Failed to upload file because it was empty.");
         }
     }
 
@@ -193,12 +203,13 @@ public class Model {
         return new Message(Message.Mtype.SUCCESS, results.toString());
     }
 
-    private Message runUnitTestsC(String mainclassname,  String username, int asstnum){
+    private Message runUnitTestsC(String mainclassname, String username, int asstnum){
         String result;
         System.out.println("Unit testing with C");
         if (testCompiles(asstnum, username, mainclassname)) { //if it compiles, run the tests.
             List<String> runUnitTests = Arrays.asList(
-                    String.format("bash run.sh -f %s -n %d -u %s", mainclassname, asstnum, username )
+                    String.format("sed -i 's/main\\(.*argv\\)/studentmain\\1/' ./submissions/assignment-%d/src/UnderTest/%s/%s", asstnum, username,mainclassname+".c"),
+                    String.format("bash run.sh -f %s -n %d -u %s", mainclassname+".c", asstnum, username )
             );
             try {
                 result = executeShellCommands(runUnitTests);
@@ -215,11 +226,13 @@ public class Model {
     private Message unitTestJava(String mainclassname,  String username, int asstnum){
         String result;
         System.out.println("Unit testing with Java");
+
         if (testCompiles(asstnum, username, mainclassname)){
 
                 List<String> runUnitTests = Arrays.asList(
                     String.format("cd ./submissions/assignment-%s/%s", asstnum, username),
-                    String.format("javac %s.java && java %s", "TestRunner", "TestRunner")
+                        String.format("sed -i 's/main\\(.*public static void main\\)/studentmain\\1/' %s", mainclassname+".java"),
+                        String.format("javac %s.java && java %s", "TestRunner", "TestRunner")
                 );
                 try {
                 result = executeShellCommands(runUnitTests);

@@ -10,6 +10,7 @@ import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import sb2.exceptions.FileSystemException;
 import sb2.modelobjects.Message;
 import sb2.modelobjects.SbUser;
 
@@ -78,16 +79,15 @@ public class Controller {
 
     @RequestMapping(value="/upload", method=RequestMethod.POST)
     public @ResponseBody String handleFileUpload (
-            @RequestParam("file") MultipartFile file, @RequestParam("username") String username, @RequestParam("mainfilename") String mainclassname,@RequestParam("asstnum") int asstnum)
-            throws Exception{
-        System.out.println("uploading...");
-        Message acceptFileMessage = this.model.acceptFile(file, username, asstnum);
-        System.out.println("file was accepted");
-        if (acceptFileMessage.getMessagetype()==FAIL) return acceptFileMessage.getValue();
-        System.out.println("Running tests");
+            @RequestParam("file") MultipartFile file, @RequestParam("username") String username, @RequestParam("mainfilename") String mainclassname,@RequestParam("asstnum") int asstnum) {
+        try {
+            Message acceptFileMessage = this.model.acceptFile(file, username, asstnum);
+        } catch (FileSystemException e){
+            return "ERROR: "+ e.getMessage();
+        }
+
         String output = this.model.runTests(mainclassname, username, asstnum).getValue();
-        System.out.println("Done running tests");
-        return "message says "+ output;
+        return "RESULTS: "+ output;
 
         //return acceptFileMessage;
     }
