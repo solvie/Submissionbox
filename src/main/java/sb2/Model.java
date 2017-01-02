@@ -1,6 +1,5 @@
 package sb2;
 
-import jdk.nashorn.tools.Shell;
 import org.apache.commons.collections4.bidimap.DualHashBidiMap;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.multipart.MultipartFile;
@@ -20,7 +19,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Scanner;
 
-import static java.lang.Thread.sleep;
 
 /**
  * Created by solvie on 2016-11-20.
@@ -180,71 +178,62 @@ public class Model {
         DualHashBidiMap<String, String> tests = SbAssignment.findAsst(this.assignments, asstnum).getOutputTests();
         //for each test, run them and see the expected value
         List<String> results= new ArrayList<>();
-        try {
-            if (testCompiles(asstnum, username, mainclassname)) //if it compiles, run the tests.
-                tests.forEach(
-                        (k, v) -> {
-                            String ans;
-                            try {
-                                ans = testOutput(asstnum, username, mainclassname, k, v);
-                            } catch (ShellException e) {
-                                ans = "ERROR." + e.getMessage();
-                            }
-                            results.add(ans);
+        if (testCompiles(asstnum, username, mainclassname)) //if it compiles, run the tests.
+            tests.forEach(
+                    (k, v) -> {
+                        String ans;
+                        try {
+                            ans = testOutput(asstnum, username, mainclassname, k, v);
+                        } catch (ShellException e) {
+                            ans = "ERROR." + e.getMessage();
                         }
-                );
-        } catch (ShellException e){
-            results.add( "ERROR WHILE COMPILING" + e.getMessage());
-        }
+                        results.add(ans);
+                    }
+            );
         return new Message(Message.Mtype.SUCCESS, results.toString());
     }
 
     private Message runUnitTestsC(String mainclassname,  String username, int asstnum){
-        String submissionDirUnitTests = "./submissions/assignment-"+asstnum+"/src/UnderTest/"+ username+"/";
-        String result="";
+        String result;
         System.out.println("Unit testing with C");
-        try {
-            if (testCompiles(asstnum, username, mainclassname)) { //if it compiles, run the tests.
-                List<String> runUnitTests = Arrays.asList(
-                        String.format("bash run.sh -f %s -n %d -u %s", mainclassname, asstnum, username )
-                );
+        if (testCompiles(asstnum, username, mainclassname)) { //if it compiles, run the tests.
+            List<String> runUnitTests = Arrays.asList(
+                    String.format("bash run.sh -f %s -n %d -u %s", mainclassname, asstnum, username )
+            );
+            try {
                 result = executeShellCommands(runUnitTests);
-                System.out.println("result was: "+ result);
-                return new Message(Message.Mtype.SUCCESS, result);
+            } catch (ShellException e){
+                result= "ERROR WHILE COMPILING" + e.getMessage();
             }
-        } catch (ShellException e){
-            result= "ERROR WHILE COMPILING" + e.getMessage();
-        } catch (IOException e){
-            result= "IOException :"+ e.getMessage();
+            System.out.println("result was: "+ result);
+            return new Message(Message.Mtype.SUCCESS, result);
         }
-        return new Message(Message.Mtype.SUCCESS, result);
+        return new Message(Message.Mtype.FAIL, "Doesn't compile!");
 
     }
 
     private Message unitTestJava(String mainclassname,  String username, int asstnum){
-        String submissionDirUnitTestsJava = "./submissions/assignment-"+asstnum+"/"+username;
-        String result = "Unit testing with Java in prog";
+        String result;
         System.out.println("Unit testing with Java");
-        try {
-            if (testCompiles(asstnum, username, mainclassname)){
+        if (testCompiles(asstnum, username, mainclassname)){
+
                 List<String> runUnitTests = Arrays.asList(
-                        String.format("cd ./submissions/assignment-%s/%s", asstnum, username),
-                        String.format("javac %s.java && java %s", "TestRunner", "TestRunner")
+                    String.format("cd ./submissions/assignment-%s/%s", asstnum, username),
+                    String.format("javac %s.java && java %s", "TestRunner", "TestRunner")
                 );
+                try {
                 result = executeShellCommands(runUnitTests);
+                }catch (ShellException e){
+                    result= "ERROR WHILE RUNNING" + e.getMessage();
+                }
                 System.out.println("result was: "+ result);
                 return new Message(Message.Mtype.SUCCESS, result);
-            }
-        } catch (ShellException e){
-            result= "ERROR WHILE COMPILING" + e.getMessage();
-        } catch (IOException e){
-            result= "ERROR WHILE COMPILING" + e.getMessage();
         }
-        return new Message(Message.Mtype.SUCCESS, result);
+        return new Message(Message.Mtype.FAIL, "Doesn't compile!");
 
     }
 
-    private boolean testCompiles(int asstnum, String username, String mainclassname) throws ShellException{
+    private boolean testCompiles(int asstnum, String username, String mainclassname){
 
         SbAssignment asst = SbAssignment.findAsst(this.assignments, asstnum);
         List<String> commands = new ArrayList<>();
@@ -252,14 +241,11 @@ public class Model {
             commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
             commands.add(String.format("javac %s.java", mainclassname));
         }else if (asst.getLanguage()== SbAssignment.Language.JAVA && asst.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST) {
-            commands.add(String.format("cd ./submissions/assignmentsss-%s/", asstnum));
-            commands.add(String.format("pwd"));
-
+            commands.add(String.format("cd ./submissions/assignment-%s/", asstnum));
             commands.add(String.format("cp %s %s && cp %s %s ", "TestRunner.java", "./"+username,
                     "TestJunit.java", "./"+username));
             commands.add(String.format("cd %s", "./"+username));
             commands.add(String.format("javac %s", "TestRunner.java"));
-
         }
         else if (asst.getLanguage()== SbAssignment.Language.C && asst.getTestFormat()== SbAssignment.TestFormat.OUTPUT) {
             commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
@@ -271,21 +257,16 @@ public class Model {
 
         try {
             System.out.println("Compiling...");
-            String message=executeShellCommands(commands);//TODO: needs to return false if doesn't compile
-            System.out.println(String.format("Compile message... %s", message));
-
-            sleep(100);
+            String message=executeShellCommands(commands);
             return true;
-        } catch (IOException e) {
-            throw new ShellException("IOException while compiling java");
-        } catch (InterruptedException e) {
-            throw new ShellException("just for sleep");//fixme
+        } catch (ShellException e) {
+            System.out.println("ShellException: " + e.getMessage());
+            return false;
         }
     }
 
     //TODO this should throw (more specific) errors if timeout, and other such stuff.
     private String testOutput(int asstnum, String username, String mainclassname, String input, String output) throws ShellException{
-        String runLine="";
         SbAssignment asst = SbAssignment.findAsst(this.assignments, asstnum);
         List<String> commands = new ArrayList<>();
 
@@ -298,47 +279,43 @@ public class Model {
             commands.add(String.format("gcc -o target %s", mainclassname)); //compiles is here for now because something's wrong
             commands.add(String.format("./target %s", input)); //fixme need to catch errorstream
         }
+        String actualOutput = executeShellCommands(commands);
+        return String.format("input: %s, output: %s, expected output: %s", input, actualOutput.toString(), output);
 
-        try {
-
-            String actualOutput = executeShellCommands(commands);
-            //System.out.println(actualOutput);
-            return String.format("input: %s, output: %s, expected output: %s", input, actualOutput.toString(), output);
-
-        } catch (IOException e) {
-            throw new ShellException("IOException while compiling and running java");
-        }
     }
 
 
 
-    private String executeShellCommands(List<String> commands) throws IOException {
-//TODO: Doesn't timeout, just force exits for now
+    private String executeShellCommands(List<String> commands) throws ShellException {
+    //Doesn't timeout, just force exits for now
         String output = "";
         ProcessBuilder pb = new ProcessBuilder("/bin/bash");
-        Process p = pb.start();
-        BufferedWriter p_stdin = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
-        for (int i = 0; i < commands.size(); i++) {
-            putCommand(p_stdin, commands.get(i));
+        try {
+            Process p = pb.start();
+            BufferedWriter p_stdin = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
+            for (int i = 0; i < commands.size(); i++) {
+                putCommand(p_stdin, commands.get(i));
+            }
+            putCommand(p_stdin, "exit");
+            p_stdin.close();        //Close to force quit (so that nothing ends up hanging)
+
+            InputStream error = p.getErrorStream();
+            InputStreamReader isrerror = new InputStreamReader(error);
+            BufferedReader bre = new BufferedReader(isrerror);
+            String allerrors="", errorline;
+
+            while ((errorline = bre.readLine()) != null)
+                allerrors=allerrors+errorline;
+            if (allerrors.length()>0) throw new ShellException(String.format("bash error: %s", allerrors));
+
+            Scanner s = new Scanner(p.getInputStream());
+            while (s.hasNext()) output = output + s.nextLine();
+            s.close();
+            return output;
+
+        } catch (IOException e){
+            throw new ShellException(String.format("IO error while executing shell commands: %s", e.getMessage()));
         }
-        putCommand(p_stdin, "exit");
-
-        p_stdin.close();        //Close to force quit (so that nothing ends up hanging)
-
-
-        InputStream error = p.getErrorStream();
-        InputStreamReader isrerror = new InputStreamReader(error);
-        BufferedReader bre = new BufferedReader(isrerror);
-        String line;
-        while ((line = bre.readLine()) != null) {
-            System.out.println(String.format("ERRORSTREAM: %s",line));
-        }
-
-        Scanner s = new Scanner(p.getInputStream());
-        while (s.hasNext()) output = output + s.nextLine();
-        s.close();
-        return output;
-
     }
 
     private void putCommand(BufferedWriter p_stdin, String commd) throws IOException{
