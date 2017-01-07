@@ -16,6 +16,10 @@ public class Message{
 
     public Message(){}
 
+    public Message (Mtype m){
+        this.messagetype = m;
+    }
+
     public Message (Mtype m, String v){
         this.messagetype = m;
         this.value = v;
@@ -28,7 +32,7 @@ public class Message{
     }
 
     public enum Mtype{
-        ERROR, TIMEOUT, WARNING, SUCCESS, FAIL
+        ERROR, TIMEOUT, DNE, WARNING, SUCCESS, FAIL
     }
 
 }

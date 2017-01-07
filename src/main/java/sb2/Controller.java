@@ -3,7 +3,10 @@ package sb2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.dao.SystemWideSaltSource;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.stereotype.Component;
@@ -13,9 +16,12 @@ import sb2.exceptions.FileSystemException;
 import sb2.modelobjects.Message;
 import sb2.modelobjects.SbUser;
 
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Scanner;
 
+import static java.lang.System.exit;
 import static sb2.modelobjects.Message.Mtype.ERROR;
 
 /**
@@ -39,15 +45,25 @@ public class Controller {
     }
 
     private void init() throws Exception{
+        System.out.println(">> Initializing classlist on an empty database? (y/n) ");
+        Scanner sc = new Scanner(System.in);
+        String resp = sc.nextLine();
+        if (!resp.equalsIgnoreCase("y")) if (!resp.equalsIgnoreCase("n")) { System.out.println("Invalid."); exit(0);}
         List<SbUser> classlist = model.init();
-        initUserList(classlist);
+        initUserList(classlist, resp.equalsIgnoreCase("y"));
         model.initFileSystem();
     }
 
-    private void initUserList(List<SbUser> classlist) throws Exception{
+    private void initUserList(List<SbUser> classlist, boolean initclasslist) throws Exception{
         if (classlist==null) throw new Exception("Classlist was empty");
-        for (SbUser user: classlist)
+        for (SbUser user: classlist){
+            if (initclasslist) {//assumes that db is empty
+                if (!model.addUser(user).equals("SUCCESS"))
+                    System.out.println("ERROR!");
+                else System.out.println(user.getFullname());
+            }
             inMemoryUserDetailsManager.createUser(new User(user.getUsername(), user.getPassword(), new ArrayList<GrantedAuthority>()));
+        }
     }
 
     @RequestMapping("/")
@@ -57,7 +73,9 @@ public class Controller {
 
     @RequestMapping(value ="/login", method = RequestMethod.POST)
     public String login() {
-        return "logged in";
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String name = auth.getName();
+        return "Hello, "+ name;
     }
 
     @RequestMapping(value ="/logout", method = RequestMethod.POST)
@@ -76,7 +94,9 @@ public class Controller {
 
     @RequestMapping(value="/upload", method=RequestMethod.POST)
     public @ResponseBody String handleFileUpload (
-            @RequestParam("file") MultipartFile file, @RequestParam("username") String username, @RequestParam("mainfilename") String mainclassname,@RequestParam("asstnum") int asstnum) {
+            @RequestParam("file") MultipartFile file, @RequestParam("mainfilename") String mainclassname,@RequestParam("asstnum") int asstnum) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String username = auth.getName();
         try {
             Message acceptFileMessage = this.model.acceptFile(file, username, asstnum);
         } catch (FileSystemException e){
@@ -96,7 +116,7 @@ public class Controller {
 
     //------------------------- TEST METHODS ------------------------------------------------
 
-    @RequestMapping("testfullnametousername")
+    @RequestMapping("/testfullnametousername")
     public void splice(@RequestParam("fullname") String fullname ) {
         //SbUser user = new SbUser();
         //user.fullnameToUsername(fullname);
@@ -104,10 +124,24 @@ public class Controller {
 
     }
 
-    @RequestMapping("testadd")
-    public String testaddstudent(@RequestParam("id") String id,@RequestParam("username") String username,@RequestParam("password") String password) {
-        SbUser user = new SbUser(id, username, password);
+    @RequestMapping("/testadd")
+    public String testaddstudent(@RequestParam("id") String id,@RequestParam("username") String username,@RequestParam("password") String password, @RequestParam("fullname") String fullname) {
+        SbUser user = new SbUser(fullname, username, password);
         return this.model.addUser(user);
+    }
+
+    @RequestMapping("/testSaveScore")
+    public String testSaveScore(@RequestParam("asstnum") int asstnum, @RequestParam("mainclassname") String mainclassname){
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String username = auth.getName();
+        Message runResults = this.model.runTests(mainclassname, username, asstnum);
+        //Todo: save this
+        try {
+            model.addScore(username, asstnum, runResults);
+            return "Saved: "+ runResults.getValue()+" for assignment "+asstnum;
+        } catch (SQLException e){
+            return "Error trying to save score: "+ e.getMessage();
+        }
     }
 
 

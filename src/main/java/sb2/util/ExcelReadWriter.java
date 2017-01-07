@@ -84,7 +84,7 @@ public class ExcelReadWriter {//debating whether this should be an implementatio
         try {
             while (rowIterator.hasNext()) {
                 Row nextRow = rowIterator.next();
-                SbUser student = new SbUser(fromDict(dict, nextRow, "Student Name"),fromDict(dict, nextRow, "Password"));
+                SbUser student = new SbUser(fromDict(dict, nextRow, "Student Name"),fromDict(dict, nextRow, "ID"));
                 classlist.add(student);
             }
         } catch (NoSuchFieldError e){

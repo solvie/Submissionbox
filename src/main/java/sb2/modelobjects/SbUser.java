@@ -22,10 +22,10 @@ public class SbUser {
         this.password = password;
     }
 
-    public SbUser(String id, String username, String password){
-        this.id = id;
-        this.username = username;
+    public SbUser(String fullname, String username, String password){
+        this.fullname = fullname;
         this.password = password;
+        this.username = username;
     }
 
     //public for test should be private later

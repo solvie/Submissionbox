@@ -16,23 +16,11 @@ import javax.sql.DataSource;
  */
 @Configuration
 public class DataSourceConfig {
-    @Bean(name = "dsTest")
-    @ConfigurationProperties(prefix="spring.mysql_test")
-    public DataSource testDataSource() {
-        return DataSourceBuilder.create().build();
-    }
-
     @Bean(name = "dsMaster")
     @Primary
     @ConfigurationProperties(prefix="spring.datasource")
     public DataSource masterDataSource() {
         return DataSourceBuilder.create().build();
-    }
-
-    @Bean(name = "jdbcTest")
-    @Autowired
-    public JdbcTemplate testJdbcTemplate(@Qualifier("dsTest")DataSource dsTest) {
-        return new JdbcTemplate(dsTest);
     }
 
     @Bean(name = "jdbcMaster")

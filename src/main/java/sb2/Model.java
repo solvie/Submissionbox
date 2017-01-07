@@ -268,7 +268,7 @@ public class Model {
         }
         else if (asst.getLanguage()== SbAssignment.Language.C && asst.getTestFormat()== SbAssignment.TestFormat.OUTPUT) {
             commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
-            commands.add(String.format("gcc -o target %s", mainclassname)); //fixme didn't test.
+            commands.add(String.format("gcc -o target %s", mainclassname+".c"));
         } else if (asst.getLanguage()== SbAssignment.Language.C && asst.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST){
             //TODO:
             return true;
@@ -295,7 +295,7 @@ public class Model {
         }
         else if (asst.getLanguage()== SbAssignment.Language.C) {
             commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
-            commands.add(String.format("gcc -o target %s", mainclassname)); //compiles is here for now because something's wrong
+            commands.add(String.format("gcc -o target %s", mainclassname+".c")); //compiles is here for now because something's wrong
             commands.add(String.format("./target %s", input)); //fixme need to catch errorstream
         }
         String actualOutput = executeShellCommands(commands);
@@ -345,17 +345,27 @@ public class Model {
         p_stdin.flush();
     }
 
-    //##################### TEST
+    public Message queryPreviousResults(SbUser user, int asstno) throws DataAccessException, SQLException {
+        return dbReadWriter.queryPreviousResults(user, asstno);
+    }
+
+    public void addScore(String user, int asstno, Message results)throws DataAccessException, SQLException{
+        dbReadWriter.addScore(user, asstno, results);
+    }
+
+
+        //##################### TEST
 
     public String addUser(SbUser user){
         try {
             this.dbReadWriter.addToClassList(user);
-            return "Successfully added!";
+            return "SUCCESS";
         } catch (DataAccessException e){
             return "Data Access Exception!: "+ e.getMessage();
         } catch (SQLException e2){
             return "SQL Exception!: "+ e2.getMessage();
         }
     }
+
 
 }
