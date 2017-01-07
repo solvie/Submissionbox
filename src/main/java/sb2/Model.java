@@ -1,10 +1,10 @@
 package sb2;
 
 import org.apache.commons.collections4.bidimap.DualHashBidiMap;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import sb2.exceptions.BadConfigXlsxException;
-import sb2.exceptions.ExcelOpenError;
 import sb2.exceptions.FileSystemException;
 import sb2.exceptions.ShellException;
 import sb2.modelobjects.Message;
@@ -14,6 +14,7 @@ import sb2.util.DBReadWriter;
 import sb2.util.ExcelReadWriter;
 
 import java.io.*;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -23,6 +24,7 @@ import java.util.Scanner;
 /**
  * Created by solvie on 2016-11-20.
  */
+
 public class Model {
     private List<SbAssignment> assignments;
     private DBReadWriter dbReadWriter;
@@ -34,11 +36,11 @@ public class Model {
         this.excelReadWriter = new ExcelReadWriter();
     }
 
-    public List<SbUser> init()throws ExcelOpenError, BadConfigXlsxException{
+    public List<SbUser> init()throws BadConfigXlsxException{
         return initClasslist();
     }
 
-    public boolean initFileSystem() throws FileSystemException, ExcelOpenError, BadConfigXlsxException, InterruptedException {
+    public boolean initFileSystem() throws FileSystemException, BadConfigXlsxException, InterruptedException {
         //TODO: If the submissions folder exists, throw an error if it doesn't look like what the assignments-config says it should look like
         //If the submission folder doesn't exist, create it from scratch with the assignments-config information.
         this.assignments = readAssignmentConfig();
@@ -55,23 +57,16 @@ public class Model {
         }
     }
 
-    private List<SbAssignment> readAssignmentConfig() throws ExcelOpenError, BadConfigXlsxException{
+    private List<SbAssignment> readAssignmentConfig() throws BadConfigXlsxException{
         String path = pathToResources + "assignments-config.xlsx";
         List<SbAssignment> assts = excelReadWriter.readAssignments(excelReadWriter.attemptGetSheet(path, "Sheet1"));
-        for (SbAssignment asst : assts) {
-            if (asst.getTestFormat() == SbAssignment.TestFormat.OUTPUT) {
-                try {
-                    asst.setOutputTests(excelReadWriter.readAssignmentTests(excelReadWriter.attemptGetSheet(path, "A" + asst.getAssignmentNum())));
-                } catch (Exception e) {
-                    throw new BadConfigXlsxException("Couldn't read the output tests for asst" + asst.getAssignmentNum());
-                }
-            }
-        }
-        System.out.println("\n all is well");
+        for (SbAssignment asst : assts)
+            if (asst.getTestFormat() == SbAssignment.TestFormat.OUTPUT)
+                asst.setOutputTests(excelReadWriter.readAssignmentTests(excelReadWriter.attemptGetSheet(path, "A" + asst.getAssignmentNum())));
         return assts;
     }
 
-    private List<SbUser> initClasslist() throws ExcelOpenError, BadConfigXlsxException{
+    private List<SbUser> initClasslist() throws BadConfigXlsxException{
         return excelReadWriter.readClasslist(excelReadWriter.attemptGetSheet(pathToResources+"classlist.xlsx", "Sheet1"));
     }
 
@@ -187,7 +182,7 @@ public class Model {
     private Message runOutputTest(String mainclassname,  String username, int asstnum){
         DualHashBidiMap<String, String> tests = SbAssignment.findAsst(this.assignments, asstnum).getOutputTests();
         //for each test, run them and see the expected value
-        List<String> results= new ArrayList<>();
+        List<String> failedtests= new ArrayList<>();
         if (testCompiles(asstnum, username, mainclassname)) //if it compiles, run the tests.
             tests.forEach(
                     (k, v) -> {
@@ -197,15 +192,17 @@ public class Model {
                         } catch (ShellException e) {
                             ans = "ERROR." + e.getMessage();
                         }
-                        results.add(ans);
+                        if (ans.length()>0)
+                            failedtests.add(ans);
                     }
             );
-        return new Message(Message.Mtype.SUCCESS, results.toString());
+        String resultsFraction = tests.size()-failedtests.size()+"/"+tests.size();
+        return new Message(Message.Mtype.SUCCESS, resultsFraction, failedtests.toString());
     }
 
     private Message runUnitTestsC(String mainclassname, String username, int asstnum){
         String result;
-        System.out.println("Unit testing with C");
+        //System.out.println("Unit testing with C");
         if (testCompiles(asstnum, username, mainclassname)) { //if it compiles, run the tests.
             List<String> runUnitTests = Arrays.asList(
                     String.format("sed -i 's/main\\(.*argv\\)/studentmain\\1/' ./submissions/assignment-%d/src/UnderTest/%s/%s", asstnum, username,mainclassname+".c"),
@@ -213,11 +210,15 @@ public class Model {
             );
             try {
                 result = executeShellCommands(runUnitTests);
+                String[]results=result.split("@");
+                String passrate = results[1];
+                String failures = results[3];
+                return new Message(Message.Mtype.SUCCESS, passrate, failures);
+
             } catch (ShellException e){
                 result= "ERROR WHILE COMPILING" + e.getMessage();
+                return new Message(Message.Mtype.FAIL, result);
             }
-            System.out.println("result was: "+ result);
-            return new Message(Message.Mtype.SUCCESS, result);
         }
         return new Message(Message.Mtype.FAIL, "Doesn't compile!");
 
@@ -235,12 +236,17 @@ public class Model {
                         String.format("javac %s.java && java %s", "TestRunner", "TestRunner")
                 );
                 try {
-                result = executeShellCommands(runUnitTests);
-                }catch (ShellException e){
-                    result= "ERROR WHILE RUNNING" + e.getMessage();
+                    result = executeShellCommands(runUnitTests);
+                    String[]results=result.split("@");
+                    System.out.println("Splitting");
+                    String passrate = results[1];
+                    String failures = results[2];
+                    return new Message(Message.Mtype.SUCCESS, passrate, failures);
                 }
-                System.out.println("result was: "+ result);
-                return new Message(Message.Mtype.SUCCESS, result);
+                catch (ShellException e){
+                    result= "ERROR WHILE RUNNING" + e.getMessage();
+                    return new Message(Message.Mtype.FAIL, result);
+                }
         }
         return new Message(Message.Mtype.FAIL, "Doesn't compile!");
 
@@ -279,7 +285,7 @@ public class Model {
     }
 
     //TODO this should throw (more specific) errors if timeout, and other such stuff.
-    private String testOutput(int asstnum, String username, String mainclassname, String input, String output) throws ShellException{
+    private String testOutput(int asstnum, String username, String mainclassname, String input, String expectedoutput) throws ShellException{
         SbAssignment asst = SbAssignment.findAsst(this.assignments, asstnum);
         List<String> commands = new ArrayList<>();
 
@@ -293,7 +299,8 @@ public class Model {
             commands.add(String.format("./target %s", input)); //fixme need to catch errorstream
         }
         String actualOutput = executeShellCommands(commands);
-        return String.format("input: %s, output: %s, expected output: %s", input, actualOutput.toString(), output);
+        if (actualOutput.equals(expectedoutput)) return "";
+        else return String.format("Input: %s, output: %s, expected output: %s", input, actualOutput.toString(), expectedoutput);
 
     }
 
@@ -322,7 +329,7 @@ public class Model {
             if (allerrors.length()>0) throw new ShellException(String.format("bash error: %s", allerrors));
 
             Scanner s = new Scanner(p.getInputStream());
-            while (s.hasNext()) output = output +" >> "+ s.nextLine();
+            while (s.hasNext()) output = output + s.nextLine();
             s.close();
             return output;
 
@@ -332,11 +339,23 @@ public class Model {
     }
 
     private void putCommand(BufferedWriter p_stdin, String commd) throws IOException{
-        System.out.println(commd);
+        //System.out.println(commd);
         p_stdin.write(commd);
         p_stdin.newLine();
         p_stdin.flush();
+    }
 
+    //##################### TEST
+
+    public String addUser(SbUser user){
+        try {
+            this.dbReadWriter.addToClassList(user);
+            return "Successfully added!";
+        } catch (DataAccessException e){
+            return "Data Access Exception!: "+ e.getMessage();
+        } catch (SQLException e2){
+            return "SQL Exception!: "+ e2.getMessage();
+        }
     }
 
 }

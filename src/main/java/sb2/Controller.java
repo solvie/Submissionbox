@@ -2,7 +2,6 @@ package sb2;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.parsing.FailFastProblemReporter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.User;
@@ -18,13 +17,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static sb2.modelobjects.Message.Mtype.ERROR;
-import static sb2.modelobjects.Message.Mtype.FAIL;
 
 /**
  * Created by solvie on 2016-11-20.
  */
 
-//TODO: when running from the jar, we get a file not found (doesn't find resources)
 
 @RestController
 @Component
@@ -86,8 +83,8 @@ public class Controller {
             return "ERROR: "+ e.getMessage();
         }
 
-        String output = this.model.runTests(mainclassname, username, asstnum).getValue();
-        return "RESULTS: "+ output;
+        Message runResults = this.model.runTests(mainclassname, username, asstnum);
+        return "PASSRATE: "+ runResults.getValue()+" FAILURES: "+runResults.getDetails();
 
         //return acceptFileMessage;
     }
@@ -107,8 +104,14 @@ public class Controller {
 
     }
 
+    @RequestMapping("testadd")
+    public String testaddstudent(@RequestParam("id") String id,@RequestParam("username") String username,@RequestParam("password") String password) {
+        SbUser user = new SbUser(id, username, password);
+        return this.model.addUser(user);
+    }
 
-    @RequestMapping("/sayhay")
+
+        @RequestMapping("/sayhay")
     public String sayHay(){
         return "hay";
     }

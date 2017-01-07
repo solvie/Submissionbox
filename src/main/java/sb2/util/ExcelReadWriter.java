@@ -3,18 +3,13 @@ package sb2.util;
 import java.io.*;
 import java.util.*;
 
-import lombok.Getter;
-import lombok.Setter;
 import org.apache.commons.collections4.bidimap.DualHashBidiMap;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.apache.commons.collections4.BidiMap;
 import sb2.exceptions.BadConfigXlsxException;
-import sb2.exceptions.ExcelOpenError;
-import sb2.exceptions.ExcelReadError;
 import sb2.modelobjects.SbAssignment;
 import sb2.modelobjects.SbUser;
 
@@ -29,18 +24,18 @@ import sb2.modelobjects.SbUser;
 
 public class ExcelReadWriter {//debating whether this should be an implementation of an interface or not.
 
-    public Sheet attemptGetSheet(String pathname, String sheetName)throws ExcelOpenError {
+    public Sheet attemptGetSheet(String pathname, String sheetName)throws BadConfigXlsxException {
         File file = new File(pathname);
         try {
             FileInputStream inputStream = new FileInputStream(file);
             Workbook spreadsheet = new XSSFWorkbook(inputStream);
             return spreadsheet.getSheet(sheetName);
         } catch (FileNotFoundException e){
-            throw new ExcelOpenError("FileNotFound", e.getCause());
+            throw new BadConfigXlsxException("FileNotFound", e.getCause());
         } catch (IOException e){
-            throw new ExcelOpenError("IOException", e.getCause());
+            throw new BadConfigXlsxException("IOException", e.getCause());
         } catch (IllegalArgumentException e){
-            throw new ExcelOpenError("IllegalArgumentException", e.getCause());
+            throw new BadConfigXlsxException("IllegalArgumentException", e.getCause());
         }
     }
 

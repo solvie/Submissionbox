@@ -42,8 +42,8 @@ IFS='_' read -r -a RESULTS <<< "$VAR" #cut up the results into 2 pieces and stor
 for i in "${RESULTS[@]}"; do
 if [ "$i" == "${RESULTS[0]}" ]; then
 PASSRATE=${i}
-echo "PASS RATE:" $PASSRATE
-echo "FAILURES:"
+echo "PASS RATE:@" $PASSRATE "@"
+echo "FAILURES:@"
 else
 echo ${i}; fi
 done

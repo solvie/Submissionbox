@@ -24,7 +24,7 @@ public class DataSourceConfig {
 
     @Bean(name = "dsMaster")
     @Primary
-    //@ConfigurationProperties(prefix="spring.datasource")
+    @ConfigurationProperties(prefix="spring.datasource")
     public DataSource masterDataSource() {
         return DataSourceBuilder.create().build();
     }

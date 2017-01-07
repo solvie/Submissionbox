@@ -12,12 +12,19 @@ import lombok.Data;
 public class Message{
     private Mtype messagetype; //Enum saying what kind of message this is
     private String value;
+    private String details;
 
     public Message(){}
 
     public Message (Mtype m, String v){
         this.messagetype = m;
         this.value = v;
+    }
+
+    public Message (Mtype m, String v, String d){
+        this.messagetype = m;
+        this.value = v;
+        this.details = d;
     }
 
     public enum Mtype{

@@ -22,6 +22,12 @@ public class SbUser {
         this.password = password;
     }
 
+    public SbUser(String id, String username, String password){
+        this.id = id;
+        this.username = username;
+        this.password = password;
+    }
+
     //public for test should be private later
     private void fullnameToUsername(String fullname){
         String[] spliced = fullname.split(",");
