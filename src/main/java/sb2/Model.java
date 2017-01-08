@@ -26,6 +26,7 @@ import java.util.Scanner;
  */
 
 public class Model {
+    private static final String junitclasspath="/vagrant/JUNIT/junit-4.10.jar"; //this is temporary until a fix is figured out.
     private List<SbAssignment> assignments;
     private DBReadWriter dbReadWriter;
     private ExcelReadWriter excelReadWriter;
@@ -118,9 +119,10 @@ public class Model {
                                 String.format("unzip %s/%s -d %s/", tempDir, name, tempDir)));
                         executeShellCommands(Arrays.asList(
                                 String.format(
-                                "for entry in $(find %s/. -name *.java); " +
-                                        " do if [[ $entry != *_MACOSX* ]]; then mv $entry %s; fi; "+
-                                        " done;", tempDir, submissionDir)));
+                                        "for entry in $(find %s/. -name \"*.java\"); " +
+                                                " do if [[ $entry != *_MACOSX* ]]; then mv $entry %s; fi; "+
+                                                " done;", tempDir, submissionDir)));
+
                     }
                     else
                         executeShellCommands(Arrays.asList(("mv " + tempDir + "/" + name + " " + submissionDir)));
@@ -142,7 +144,7 @@ public class Model {
                         if (name.contains(".zip")) {
                             executeShellCommands(Arrays.asList(String.format("unzip %s/%s -d %s/", tempDir, name, tempDir)));
                             executeShellCommands(Arrays.asList(String.format(
-                                    "for entry in $(find %s/. -name *.java); " +
+                                    "for entry in $(find %s/. -name \"*.java\"); " +
                                             " do if [[ $entry != *_MACOSX* ]]; then mv $entry %s; fi; "+
                                             " done;", tempDir, submissionDirUnitTestsJava),
                                     String.format("cd %s", submissionDirUnitTestsJava)
@@ -183,7 +185,8 @@ public class Model {
         DualHashBidiMap<String, String> tests = SbAssignment.findAsst(this.assignments, asstnum).getOutputTests();
         //for each test, run them and see the expected value
         List<String> failedtests= new ArrayList<>();
-        if (testCompiles(asstnum, username, mainclassname)) //if it compiles, run the tests.
+        Message results = testCompiles(asstnum, username, mainclassname);
+        if (results.getMessagetype()== Message.Mtype.SUCCESS){ //if it compiles, run the tests.
             tests.forEach(
                     (k, v) -> {
                         String ans;
@@ -196,14 +199,18 @@ public class Model {
                             failedtests.add(ans);
                     }
             );
-        String resultsFraction = tests.size()-failedtests.size()+"/"+tests.size();
-        return new Message(Message.Mtype.SUCCESS, resultsFraction, failedtests.toString());
+            String resultsFraction = tests.size()-failedtests.size()+"/"+tests.size();
+            return new Message(Message.Mtype.SUCCESS, resultsFraction, failedtests.toString());
+        }
+        else return results;
     }
 
     private Message runUnitTestsC(String mainclassname, String username, int asstnum){
         String result;
         //System.out.println("Unit testing with C");
-        if (testCompiles(asstnum, username, mainclassname)) { //if it compiles, run the tests.
+        Message compileresults = testCompiles(asstnum, username, mainclassname);
+
+        if (compileresults.getMessagetype()== Message.Mtype.SUCCESS) { //if it compiles, run the tests.
             List<String> runUnitTests = Arrays.asList(
                     String.format("sed -i 's/main\\(.*argv\\)/studentmain\\1/' ./submissions/assignment-%d/src/UnderTest/%s/%s", asstnum, username,mainclassname+".c"),
                     String.format("bash run.sh -f %s -n %d -u %s", mainclassname+".c", asstnum, username )
@@ -219,21 +226,22 @@ public class Model {
                 result= "ERROR WHILE COMPILING" + e.getMessage();
                 return new Message(Message.Mtype.FAIL, result);
             }
-        }
-        return new Message(Message.Mtype.FAIL, "Doesn't compile!");
+        } else return compileresults;
 
     }
 
     private Message unitTestJava(String mainclassname,  String username, int asstnum){
         String result;
         System.out.println("Unit testing with Java");
+        Message compileresults = testCompiles(asstnum, username, mainclassname);
 
-        if (testCompiles(asstnum, username, mainclassname)){
+        if (compileresults.getMessagetype()== Message.Mtype.SUCCESS){
 
                 List<String> runUnitTests = Arrays.asList(
                     String.format("cd ./submissions/assignment-%s/%s", asstnum, username),
                         String.format("sed -i 's/main\\(.*public static void main\\)/studentmain\\1/' %s", mainclassname+".java"),
-                        String.format("javac %s.java && java %s", "TestRunner", "TestRunner")
+                        //String.format("javac %s.java && java %s", "TestRunner", "TestRunner")
+                        String.format("javac *.java && java -cp %s:. %s", junitclasspath, "TestRunner")
                 );
                 try {
                     result = executeShellCommands(runUnitTests);
@@ -248,39 +256,41 @@ public class Model {
                     return new Message(Message.Mtype.FAIL, result);
                 }
         }
-        return new Message(Message.Mtype.FAIL, "Doesn't compile!");
+        else return compileresults;
 
     }
 
-    private boolean testCompiles(int asstnum, String username, String mainclassname){
+    private Message testCompiles(int asstnum, String username, String mainclassname){
 
         SbAssignment asst = SbAssignment.findAsst(this.assignments, asstnum);
         List<String> commands = new ArrayList<>();
         if (asst.getLanguage()== SbAssignment.Language.JAVA && asst.getTestFormat()== SbAssignment.TestFormat.OUTPUT) {
             commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
-            commands.add(String.format("javac %s.java", mainclassname));
+            //commands.add(String.format("javac %s.java", mainclassname));
+            commands.add("javac *.java");
+
         }else if (asst.getLanguage()== SbAssignment.Language.JAVA && asst.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST) {
             commands.add(String.format("cd ./submissions/assignment-%s/", asstnum));
             commands.add(String.format("cp %s %s && cp %s %s ", "TestRunner.java", "./"+username,
                     "TestJunit.java", "./"+username));
             commands.add(String.format("cd %s", "./"+username));
-            commands.add(String.format("javac %s", "TestRunner.java"));
+            //commands.add(String.format("javac %s", "TestRunner.java"));
+            commands.add("javac *.java");
+
         }
         else if (asst.getLanguage()== SbAssignment.Language.C && asst.getTestFormat()== SbAssignment.TestFormat.OUTPUT) {
             commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
             commands.add(String.format("gcc -o target %s", mainclassname+".c"));
         } else if (asst.getLanguage()== SbAssignment.Language.C && asst.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST){
             //TODO:
-            return true;
         }
 
         try {
             System.out.println("Compiling...");
             String message=executeShellCommands(commands);
-            return true;
+            return new Message(Message.Mtype.SUCCESS, "Compiles", message);
         } catch (ShellException e) {
-            System.out.println("ShellException: " + e.getMessage());
-            return false;
+            return new Message(Message.Mtype.FAIL, "Does not compile", e.getMessage());
         }
     }
 
@@ -291,7 +301,9 @@ public class Model {
 
         if (asst.getLanguage()== SbAssignment.Language.JAVA) {
             commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
-            commands.add(String.format("java %s %s", mainclassname, input));
+            //commands.add(String.format("java %s %s", mainclassname, input));
+            commands.add(String.format("java -cp . %s %s", mainclassname, input));
+
         }
         else if (asst.getLanguage()== SbAssignment.Language.C) {
             commands.add(String.format("cd ./submissions/assignment-%s/%s", asstnum, username));
@@ -339,7 +351,7 @@ public class Model {
     }
 
     private void putCommand(BufferedWriter p_stdin, String commd) throws IOException{
-        //System.out.println(commd);
+        System.out.println(commd);
         p_stdin.write(commd);
         p_stdin.newLine();
         p_stdin.flush();
