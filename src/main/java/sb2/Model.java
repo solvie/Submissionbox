@@ -1,5 +1,6 @@
 package sb2;
 
+import lombok.Getter;
 import org.apache.commons.collections4.bidimap.DualHashBidiMap;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,7 +28,8 @@ import java.util.Scanner;
 
 public class Model {
     private static final String junitclasspath="/vagrant/JUNIT/junit-4.10.jar"; //this is temporary until a fix is figured out.
-    private List<SbAssignment> assignments;
+    //private static final String junitclasspath="/home/ecse202/JUNIT/junit-4.10.jar";
+    @Getter private List<SbAssignment> assignments;
     private DBReadWriter dbReadWriter;
     private ExcelReadWriter excelReadWriter;
     private final String pathToResources = "./src/main/resources/";
@@ -78,11 +80,11 @@ public class Model {
         try { //Make a temp directory if there isn't already
             executeShellCommands(Arrays.asList(("mkdir " + path)));
         } catch (ShellException e){
-            System.out.println("There was already the dir ");
+            //System.out.println("There was already the dir ");
             try { //If there was stuff in it, delete everything inside the directory.
                 executeShellCommands(Arrays.asList(String.format("rm -r %s/*", path)));
             } catch (ShellException e2){
-                System.out.println("Nothing to delete in there?:"+ e2.getMessage());
+                //System.out.println("Nothing to delete in there?:"+ e2.getMessage());
             }
         }
     }
@@ -128,7 +130,8 @@ public class Model {
                         executeShellCommands(Arrays.asList(("mv " + tempDir + "/" + name + " " + submissionDir)));
 
                 } else if (currAsst.getTestFormat()== SbAssignment.TestFormat.OUTPUT && currAsst.getLanguage()== SbAssignment.Language.C){
-                    executeShellCommands(Arrays.asList(("mv " + tempDir + "/" + name + " " + submissionDir)));
+                    makeDirectory(submissionDir);
+                    executeShellCommands(Arrays.asList(("mv " + tempDir + "/" + name + " " + submissionDir+"/")));
 
                 }else if (currAsst.getTestFormat()== SbAssignment.TestFormat.UNIT_TEST ){
                     //TODO: for now this takes care of only single c file submssions; assuming there's no makefile
@@ -232,7 +235,7 @@ public class Model {
 
     private Message unitTestJava(String mainclassname,  String username, int asstnum){
         String result;
-        System.out.println("Unit testing with Java");
+        //System.out.println("Unit testing with Java");
         Message compileresults = testCompiles(asstnum, username, mainclassname);
 
         if (compileresults.getMessagetype()== Message.Mtype.SUCCESS){
@@ -241,12 +244,14 @@ public class Model {
                     String.format("cd ./submissions/assignment-%s/%s", asstnum, username),
                         String.format("sed -i 's/main\\(.*public static void main\\)/studentmain\\1/' %s", mainclassname+".java"),
                         //String.format("javac %s.java && java %s", "TestRunner", "TestRunner")
-                        String.format("javac *.java && java -cp %s:. %s", junitclasspath, "TestRunner")
+                        //String.format("javac *.java && java -cp %s:. %s", junitclasspath, "TestRunner")
+                        String.format("javac -cp %s:. %s.java && java -cp %s:. %s", junitclasspath, "TestRunner",junitclasspath, "TestRunner")
+
                 );
                 try {
                     result = executeShellCommands(runUnitTests);
                     String[]results=result.split("@");
-                    System.out.println("Splitting");
+                    //System.out.println("Splitting");
                     String passrate = results[1];
                     String failures = results[2];
                     return new Message(Message.Mtype.SUCCESS, passrate, failures);
@@ -275,7 +280,9 @@ public class Model {
                     "TestJunit.java", "./"+username));
             commands.add(String.format("cd %s", "./"+username));
             //commands.add(String.format("javac %s", "TestRunner.java"));
-            commands.add("javac *.java");
+            //commands.add("javac *.java");
+            commands.add(String.format("javac -cp %s:. TestRunner.java", junitclasspath));
+
 
         }
         else if (asst.getLanguage()== SbAssignment.Language.C && asst.getTestFormat()== SbAssignment.TestFormat.OUTPUT) {
@@ -286,7 +293,7 @@ public class Model {
         }
 
         try {
-            System.out.println("Compiling...");
+            //System.out.println("Compiling...");
             String message=executeShellCommands(commands);
             return new Message(Message.Mtype.SUCCESS, "Compiles", message);
         } catch (ShellException e) {
@@ -351,7 +358,7 @@ public class Model {
     }
 
     private void putCommand(BufferedWriter p_stdin, String commd) throws IOException{
-        System.out.println(commd);
+        //System.out.println(commd);
         p_stdin.write(commd);
         p_stdin.newLine();
         p_stdin.flush();
@@ -366,7 +373,7 @@ public class Model {
     }
 
 
-        //##################### TEST
+    //##################### TEST
 
     public String addUser(SbUser user){
         try {

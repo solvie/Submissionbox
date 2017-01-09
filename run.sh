@@ -35,8 +35,6 @@ ENTRY=./UnderTest/$USERNAME/$ASSTNAME
 if make -B UNDERTEST=$ENTRY >/dev/null
 then compiled="compiled"; else exit 0; fi
 
-touch target 
-
 VAR="$(./target)"
 IFS='_' read -r -a RESULTS <<< "$VAR" #cut up the results into 2 pieces and store it in the results array
 

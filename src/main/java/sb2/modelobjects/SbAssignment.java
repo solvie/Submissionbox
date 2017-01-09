@@ -17,6 +17,7 @@ public class SbAssignment {
     private Language language;
     private TestFormat testFormat;
     private DualHashBidiMap<String, String> outputTests;
+    private String description;
 
     public SbAssignment(){}
 

@@ -50,6 +50,7 @@ public class ExcelReadWriter {//debating whether this should be an implementatio
                 Row nextRow = rowIterator.next();
                 SbAssignment asst = new SbAssignment(fromDict(dict, nextRow, "Assignment"),
                         fromDict(dict, nextRow, "Language"), fromDict(dict, nextRow, "Test Format"));
+                asst.setDescription(fromDict(dict, nextRow, "Description"));
                 assignmentList.add(asst);
             }
         } catch (NoSuchFieldError e){

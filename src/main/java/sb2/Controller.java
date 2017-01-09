@@ -3,7 +3,6 @@ package sb2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.authentication.dao.SystemWideSaltSource;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -14,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import sb2.exceptions.FileSystemException;
 import sb2.modelobjects.Message;
+import sb2.modelobjects.SbAssignment;
 import sb2.modelobjects.SbUser;
 
 import java.sql.SQLException;
@@ -105,8 +105,6 @@ public class Controller {
 
         Message runResults = this.model.runTests(mainclassname, username, asstnum);
         return "PASSRATE: "+ runResults.getValue()+" FAILURES: "+runResults.getDetails();
-
-        //return acceptFileMessage;
     }
 
     @ExceptionHandler(value = Exception.class)
@@ -125,7 +123,7 @@ public class Controller {
     }
 
     @RequestMapping("/testadd")
-    public String testaddstudent(@RequestParam("id") String id,@RequestParam("username") String username,@RequestParam("password") String password, @RequestParam("fullname") String fullname) {
+    public String testaddstudent(@RequestParam("username") String username,@RequestParam("password") String password, @RequestParam("fullname") String fullname) {
         SbUser user = new SbUser(fullname, username, password);
         return this.model.addUser(user);
     }
@@ -135,6 +133,7 @@ public class Controller {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         String username = auth.getName();
         Message runResults = this.model.runTests(mainclassname, username, asstnum);
+        System.out.println(runResults);
         //Todo: save this
         try {
             model.addScore(username, asstnum, runResults);
@@ -142,6 +141,11 @@ public class Controller {
         } catch (SQLException e){
             return "Error trying to save score: "+ e.getMessage();
         }
+    }
+
+    @RequestMapping("/testGetAssignmentDetails")
+    public List<SbAssignment> getAvailableAssignments(){
+        return model.getAssignments();
     }
 
 
